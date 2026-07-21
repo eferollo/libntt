@@ -1,0 +1,10 @@
+set(NTT_ALL_BACKENDS scalar_toy)
+
+foreach(backend ${NTT_ALL_BACKENDS})
+    if(TARGET ntt_${backend})
+        set(exe test_ntt_${backend})
+        add_executable(${exe} torture_ntt.c)
+        target_link_libraries(${exe} PRIVATE ntt::${backend} OpenSSL::Crypto)
+        add_test(NAME ${backend} COMMAND ${exe})
+    endif()
+endforeach()
