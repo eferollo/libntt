@@ -1,6 +1,109 @@
-#include "ntt_internal.h"
+#include "ntt_scalar_toy_internal.h"
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+
+/**
+ * @brief Initializes the scalar toy adapter state.
+ *
+ * Allocates and initializes all state required by the scalar toy adapter.
+ * This includes transform parameters, modular inverses, and powers of psi
+ * used by the negacyclic multiplication implementation.
+ *
+ * @param[in] config NTT parameters and optional adapter configuration flags.
+ *
+ * @return Newly allocated scalar toy adapter state.
+ * @return NULL on failure.
+ */
+void *ntt__adapter_setup(const ntt_config *config)
+{
+    uint32_t q, n, omega, psi;
+    if (config == NULL) {
+        NTT_LOG(NTT_LOG_ERROR, "Invalid scalar toy adapter configuration");
+        return NULL;
+    }
+
+    q = ntt_config_get_modulus(config);
+    n = ntt_config_get_size(config);
+    omega = ntt_config_get_omega(config);
+    psi = ntt_config_get_psi(config);
+
+    ntt_scalar_toy_state *state = calloc(1, sizeof(*state));
+    if (state == NULL) {
+        NTT_LOG(NTT_LOG_ERROR, "scalar toy state allocation failed");
+        return NULL;
+    }
+
+    state->q = q;
+    state->n = n;
+    state->omega = ntt__reduce(omega, q);
+    state->psi = ntt__reduce(psi, q);
+
+    for (uint32_t t = n; t > 1; t >>= 1) {
+        state->stages++;
+    }
+
+    state->omega_inv = ntt__modinv(state->omega, q);
+    state->n_inv = ntt__modinv(ntt__reduce(n, q), q);
+    state->psi_inv = ntt__modinv(state->psi, q);
+
+    state->psi_pow = calloc(n, sizeof(uint32_t));
+    state->psi_inv_pow = calloc(n, sizeof(uint32_t));
+    if (state->psi_pow == NULL || state->psi_inv_pow == NULL) {
+        NTT_LOG(NTT_LOG_ERROR,
+                "scalar toy psi table allocation failed (n=%u)",
+                n);
+        ntt__adapter_teardown(state);
+        return NULL;
+    }
+
+    /* q > 1 is guaranteed by backend validation, so 1 is already reduced. */
+    state->psi_pow[0] = 1;
+    state->psi_inv_pow[0] = 1;
+
+    for (uint32_t i = 1; i < n; i++) {
+        state->psi_pow[i] = ntt__mulmod(state->psi_pow[i - 1], state->psi, q);
+        state->psi_inv_pow[i] =
+            ntt__mulmod(state->psi_inv_pow[i - 1], state->psi_inv, q);
+    }
+
+    return state;
+}
+
+/**
+ * @brief Releases scalar toy adapter state.
+ *
+ * @param[in] state Adapter-specific state to release.
+ */
+void ntt__adapter_teardown(void *state_ptr)
+{
+    ntt_scalar_toy_state *state = state_ptr;
+    if (state == NULL) {
+        return;
+    }
+
+    SAFE_FREE(state->psi_pow);
+    SAFE_FREE(state->psi_inv_pow);
+    ZERO_STRUCTP(state);
+    SAFE_FREE(state);
+}
+
+/**
+ * @brief Validates a modulus for the scalar toy arithmetic adapter.
+ *
+ * The scalar toy adapter supports any modulus greater than one. Unlike
+ * optimized arithmetic adapters, no modulus-specific precomputation or
+ * restrictions are required.
+ *
+ * @param[in] q     Modulus to validate.
+ *
+ * @return true if q is a valid modulus for this adapter.
+ * @return false otherwise.
+ */
+bool ntt__validate_modulus(uint32_t q)
+{
+    return q > 1;
+}
 
 /**
  * @brief Performs an in-place iterative radix-2 Number Theoretic Transform
@@ -20,8 +123,8 @@
  * multiplied by scale after the transform. For the inverse transform,
  * this is typically n^{-1} mod q.
  *
- * @param[in] ctx   NTT context containing the transform size (n) and
- *                  modulus (q).
+ * @param[in] state Backend-specific state containing the transform size (n)
+ *                  and modulus (q).
  * @param[in,out] a Array of n coefficients to transform. On success, it
  *                  contains the transformed coefficients.
  * @param[in] root  Primitive n-th root of unity modulo q (or its inverse
@@ -32,12 +135,14 @@
  * @return NTT_OK  Transform completed successfully.
  * @return NTT_ERROR on errors.
  */
-static int
-iterative_fft(const ntt_ctx *ctx, uint32_t *a, uint32_t root, uint32_t scale)
+static int iterative_fft(ntt_scalar_toy_state *state,
+                         uint32_t *a,
+                         uint32_t root,
+                         uint32_t scale)
 {
     int rc;
-    uint32_t n = ctx->n;
-    uint32_t q = ctx->q;
+    uint32_t n = state->n;
+    uint32_t q = state->q;
 
     rc = ntt__bitrev_permute(a, n);
     if (rc == -1) {
@@ -74,7 +179,7 @@ iterative_fft(const ntt_ctx *ctx, uint32_t *a, uint32_t root, uint32_t scale)
  * Applies the in-place forward radix-2 NTT to the input polynomial using the
  * primitive n-th root of unity stored in the context.
  *
- * @param[in] ctx   Initialized NTT context.
+ * @param[in] state Backend-specific state.
  * @param[in,out] a Array of ctx->n coefficients. On success, it contains the
  *                  forward NTT of the input.
  *
@@ -83,13 +188,14 @@ iterative_fft(const ntt_ctx *ctx, uint32_t *a, uint32_t root, uint32_t scale)
  *
  * @see iterative_fft()
  */
-int ntt_forward(const ntt_ctx *ctx, uint32_t *a)
+int ntt__forward(void *state_ptr, uint32_t *a)
 {
-    if (ctx == NULL || a == NULL) {
+    if (state_ptr == NULL || a == NULL) {
         NTT_LOG(NTT_LOG_ERROR, "Invalid arguments");
         return NTT_ERROR;
     }
-    return iterative_fft(ctx, a, ctx->omega, 1);
+    ntt_scalar_toy_state *state = state_ptr;
+    return iterative_fft(state, a, state->omega, 1);
 }
 
 /**
@@ -99,22 +205,23 @@ int ntt_forward(const ntt_ctx *ctx, uint32_t *a)
  * inverse primitive n-th root of unity stored in the context. The output is
  * scaled by n^{-1} mod q to recover the original polynomial.
  *
- * @param[in] ctx   Initialized NTT context.
+ * @param[in] state Backend-specific state.
  * @param[in,out] a Array of ctx->n coefficients. On success, it contains the
  *                  inverse NTT of the input.
  *
- * @return 0  Transform completed successfully.
+ * @return NTT_OK  Transform completed successfully.
  * @return NTT_ERROR Invalid input.
  *
  * @see iterative_fft()
  */
-static inline int ntt_inverse(const ntt_ctx *ctx, uint32_t *a)
+int ntt__inverse(void *state_ptr, uint32_t *a)
 {
-    if (ctx == NULL || a == NULL) {
+    if (state_ptr == NULL || a == NULL) {
         NTT_LOG(NTT_LOG_ERROR, "Invalid arguments");
         return NTT_ERROR;
     }
-    return iterative_fft(ctx, a, ctx->omega_inv, ctx->n_inv);
+    ntt_scalar_toy_state *state = state_ptr;
+    return iterative_fft(state, a, state->omega_inv, state->n_inv);
 }
 
 /**
@@ -144,24 +251,22 @@ static inline int ntt_inverse(const ntt_ctx *ctx, uint32_t *a)
  * @param[in] b    Second input polynomial of length ctx->n.
  * @param[out] c   Output polynomial of length ctx->n. May alias neither a nor
  *                 b.
- * @param[in] ctx  Initialized NTT context containing the transform parameters
- *                 and the precomputed powers of psi psi^{-1}.
+ * @param[in] state Backend-specific state containing the transform parameters
+ *                  and the precomputed powers of psi and psi^{-1}.
  *
- * @return 0  Multiplication completed successfully.
+ * @return NTT_OK Multiplication completed successfully.
  * @return NTT_ERROR on errors.
  */
-int ntt_negacyclic_mul(uint32_t *a,
-                       uint32_t *b,
-                       uint32_t *c,
-                       const ntt_ctx *ctx)
+int ntt__negacyclic_mul(void *state_ptr, uint32_t *a, uint32_t *b, uint32_t *c)
 {
-    if (ctx == NULL || a == NULL || b == NULL || c == NULL) {
+    if (state_ptr == NULL || a == NULL || b == NULL || c == NULL) {
         NTT_LOG(NTT_LOG_ERROR, "Invalid arguments");
         return NTT_ERROR;
     }
 
-    uint32_t n = ctx->n;
-    uint32_t q = ctx->q;
+    ntt_scalar_toy_state *state = state_ptr;
+    uint32_t n = state->n;
+    uint32_t q = state->q;
     int rc;
 
     /* Twisted copies of a and b */
@@ -175,16 +280,16 @@ int ntt_negacyclic_mul(uint32_t *a,
 
     /* Step 1: twist by psi^i */
     for (uint32_t i = 0; i < n; i++) {
-        ta[i] = ntt__mulmod(a[i], ctx->psi_pow[i], q);
-        tb[i] = ntt__mulmod(b[i], ctx->psi_pow[i], q);
+        ta[i] = ntt__mulmod(a[i], state->psi_pow[i], q);
+        tb[i] = ntt__mulmod(b[i], state->psi_pow[i], q);
     }
 
     /* Step 2: foward NTT (cyclic) on each */
-    rc = ntt_forward(ctx, ta);
+    rc = ntt__forward(state, ta);
     if (rc != NTT_OK) {
         goto cleanup;
     }
-    rc = ntt_forward(ctx, tb);
+    rc = ntt__forward(state, tb);
     if (rc != NTT_OK) {
         goto cleanup;
     }
@@ -195,98 +300,15 @@ int ntt_negacyclic_mul(uint32_t *a,
     }
 
     /* Step 4: inverse NTT */
-    rc = ntt_inverse(ctx, ta);
+    rc = ntt__inverse(state, ta);
     if (rc != NTT_OK) {
         goto cleanup;
     }
 
     /* Step 5: untwist by psi^{-i} to undo step 1 */
     for (uint32_t i = 0; i < n; i++) {
-        c[i] = ntt__mulmod(ta[i], ctx->psi_inv_pow[i], q);
+        c[i] = ntt__mulmod(ta[i], state->psi_inv_pow[i], q);
     }
-
-cleanup:
-    SAFE_FREE(ta);
-    SAFE_FREE(tb);
-    return rc;
-}
-
-/**
- * @brief Multiplies two polynomials using the cyclic Number Theoretic
- * Transform (NTT).
- *
- * Computes the product
- * @f[
- * c(x) = a(x)b(x) mod (x^n - 1, q),
- * @f]
- * where q is the modulus and n is the transform size stored in the NTT
- * context.
- *
- * Unlike negacyclic_mul_ntt(), no twisting by powers of psi is required:
- * the plain NTT (using omega directly) already implements the convolution
- * theorem for cyclic convolution, so this is the direct
- * NTT -> pointwise-multiply -> INTT pipeline with no pre- or post-processing.
- *
- *   1. Compute the forward NTT of both operands.
- *   2. Perform pointwise multiplication in the transform domain.
- *   3. Compute the inverse NTT.
- *
- * Temporary buffers are allocated internally and freed before the function
- * returns.
- *
- * @param[in] a    First input polynomial of length ctx->n.
- * @param[in] b    Second input polynomial of length ctx->n.
- * @param[out] c   Output polynomial of length ctx->n. May alias neither a nor
- *                 b.
- * @param[in] ctx  Initialized NTT context containing the transform
- *                 parameters.
- *
- * @return NTT_OK  Multiplication completed successfully.
- * @return NTT_ERROR on errors.
- */
-int cyclic_mul_ntt(uint32_t *a, uint32_t *b, uint32_t *c, const ntt_ctx *ctx)
-{
-    if (ctx == NULL || a == NULL || b == NULL || c == NULL) {
-        NTT_LOG(NTT_LOG_ERROR, "Invalid arguments");
-        return NTT_ERROR;
-    }
-
-    uint32_t n = ctx->n;
-    int rc;
-
-    uint32_t *ta = calloc(n, sizeof(uint32_t));
-    uint32_t *tb = calloc(n, sizeof(uint32_t));
-    if (ta == NULL || tb == NULL) {
-        NTT_LOG(NTT_LOG_ERROR, "Error while allocating twisted a and b");
-        rc = NTT_ERROR;
-        goto cleanup;
-    }
-
-    memcpy(ta, a, n * sizeof(uint32_t));
-    memcpy(tb, b, n * sizeof(uint32_t));
-
-    /* Step 1: forward NTT on each operand, no twisting */
-    rc = ntt_forward(ctx, ta);
-    if (rc != NTT_OK) {
-        goto cleanup;
-    }
-    rc = ntt_forward(ctx, tb);
-    if (rc != NTT_OK) {
-        goto cleanup;
-    }
-
-    /* Step 2: pointwise multiply, reuse ta as the output buffer */
-    for (uint32_t i = 0; i < n; i++) {
-        ta[i] = ntt__mulmod(ta[i], tb[i], ctx->q);
-    }
-
-    /* Step 3: inverse NTT recovers the cyclic product directly */
-    rc = ntt_inverse(ctx, ta);
-    if (rc != NTT_OK) {
-        goto cleanup;
-    }
-
-    memcpy(c, ta, n * sizeof(uint32_t));
 
 cleanup:
     SAFE_FREE(ta);

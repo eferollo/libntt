@@ -1,7 +1,7 @@
 #ifndef NTT_H
 #define NTT_H
 
-#include <stdint.h>
+#include "ntt/ntt_adapter.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -15,18 +15,20 @@ typedef enum {
 } ntt_status;
 
 /**
- * @brief Initialize an NTT context structure.
+ * @brief Initializes an NTT context using a selected NTT adapter.
  *
- * @param[in] q         Prime modulus.
- * @param[in] n         Transform size (power of two).
- * @param[in] omega     A primitive n-th root of unity mod q.
- * @param[in] psi       A primitive 2n-th root of unity mod q, with
- *                      psi^2 = omega.
+ * Different ntt_ctx instances may use different adapters within the same
+ * process. The adapter owns all implementation-specific arithmetic state,
+ * transform tables, and precomputation behind an opaque state pointer.
  *
- * @return Newly allocated context, or NULL on invalid parameters or
- *         allocation failure.
+ * @param[in] adapter NTT adapter to use.
+ * @param[in] config  NTT transform parameters and optional configuration flags.
+ *
+ * @return Newly allocated context
+ * @return NULL on invalid parameters, an adapter that rejects the requested
+ *         configuration, or allocation failure.
  */
-ntt_ctx *ntt_create(uint32_t q, uint32_t n, uint32_t omega, uint32_t psi);
+ntt_ctx *ntt_create(const ntt_adapter *adapter, const ntt_config *config);
 
 /**
  * @brief Releases all resources owned by an NTT context.
@@ -39,10 +41,62 @@ ntt_ctx *ntt_create(uint32_t q, uint32_t n, uint32_t omega, uint32_t psi);
  */
 void ntt_destroy(ntt_ctx *ctx);
 
+/**
+ * @brief Multiplies two polynomials using the negacyclic Number Theoretic
+ * Transform (NTT).
+ *
+ * Computes the product
+ * @f[
+ * c(x) = a(x)b(x) mod (x^n + 1, q),
+ * @f]
+ * where q is the modulus and n is the transform size stored in the NTT
+ * context.
+ *
+ * @param[in] a    First input polynomial of length ctx->n.
+ * @param[in] b    Second input polynomial of length ctx->n.
+ * @param[out] c   Output polynomial of length ctx->n. May alias neither a nor
+ *                 b.
+ * @param[in] ctx  Initialized NTT context containing the transform parameters
+ *                 and the precomputed powers of psi psi^{-1}.
+ *
+ * @return NTT_OK Multiplication completed successfully.
+ * @return NTT_ERROR on errors.
+ */
 int ntt_negacyclic_mul(uint32_t *a,
                        uint32_t *b,
                        uint32_t *c,
                        const ntt_ctx *ctx);
+
+/**
+ * @brief Computes the forward Number Theoretic Transform (NTT).
+ *
+ * Applies the in-place forward radix-2 NTT to the input polynomial using the
+ * primitive n-th root of unity stored in the context.
+ *
+ * @param[in] ctx   Initialized NTT context.
+ * @param[in,out] a Array of ctx->n coefficients. On success, it contains the
+ *                  forward NTT of the input.
+ *
+ * @return NTT_OK  Transform completed successfully.
+ * @return NTT_ERROR Invalid input.
+ */
+int ntt_forward(const ntt_ctx *ctx, uint32_t *a);
+
+/**
+ * @brief Computes the inverse Number Theoretic Transform (INTT).
+ *
+ * Applies the in-place inverse radix-2 NTT to the input polynomial using the
+ * inverse primitive n-th root of unity stored in the context. The output is
+ * scaled by n^{-1} mod q to recover the original polynomial.
+ *
+ * @param[in] ctx   Initialized NTT context.
+ * @param[in,out] a Array of ctx->n coefficients. On success, it contains the
+ *                  inverse NTT of the input.
+ *
+ * @return NTT_OK Transform completed successfully.
+ * @return NTT_ERROR Invalid input.
+ */
+int ntt_inverse(const ntt_ctx *ctx, uint32_t *a);
 
 #ifdef __cplusplus
 }

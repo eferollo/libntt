@@ -1,8 +1,10 @@
+#define _POSIX_C_SOURCE 200809L
+
+#include "ntt_internal.h"
 #include <stdarg.h>
 #include <stdatomic.h>
 #include <stdio.h>
 #include <time.h>
-#include "ntt/ntt_log.h"
 
 /**
  * Only the level flag needs thread-safety here. Concurrent

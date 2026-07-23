@@ -1,49 +1,35 @@
 set(NTT_COMMON_SOURCES
-    common/ntt_arith.c
+    common/ntt_api.c
+    common/ntt_adapter.c
     common/ntt_ctx.c
+    common/ntt_config.c
     common/ntt_log.c
+    common/ntt_utils.c
 )
 
-# add_ntt_backend(name source1 [source2 ...])
-#
-# Creates a static library `ntt_<name>` implementing the full public API
-# (include/ntt/ntt.h) by combining the shared common sources with the
-# backend-specific sources passed in. Every backend therefore exposes
-# identical symbol names (ntt_create, ntt_forward, ...), which is exactly
-# what lets tests/examples link against ntt::<name> without caring which
-# backend it is. The flip side: two backends can never be linked into the
-# same binary at once (symbol clash by design).
-function(add_ntt_backend name)
-    set(target ntt_${name})
-    add_library(${target} STATIC
-        ${NTT_COMMON_SOURCES}
-        ${ARGN}
-    )
-    target_include_directories(${target}
-        PUBLIC
-            ${CMAKE_SOURCE_DIR}/include
-        PRIVATE
-            ${CMAKE_CURRENT_SOURCE_DIR}/common
-    )
-    target_compile_options(${target} PRIVATE -Wall -Wextra)
-    if(NTT_ENABLE_LOGGING)
-        target_compile_definitions(${target} PUBLIC NTT_LOG_ENABLED)
-    endif()
-    add_library(ntt::${name} ALIAS ${target})
-endfunction()
-
-add_ntt_backend(scalar_toy
-    scalar_toy/ntt_scalar_toy.c
+set(NTT_ADAPTER_SOURCES
+    adapters/scalar_toy/ntt_arith.c
+    adapters/scalar_toy/ntt_adapter.c
+    adapters/scalar_toy/ntt.c
+    # -- We'll add here future adapters here directly, no branching needed.
+    #    Distinct ntt__<adapter>_* symbol names per backend are what
+    #    makes listing them all unconditionally safe. CHECK THIS
 )
 
-# add_ntt_backend(scalar
-#     scalar/ntt_scalar.c
-# )
-#
+add_library(ntt STATIC
+    ${NTT_COMMON_SOURCES}
+    ${NTT_ADAPTER_SOURCES}
+)
 
-if(NOT TARGET ntt_${NTT_DEFAULT_BACKEND})
-    message(FATAL_ERROR "NTT_DEFAULT_BACKEND=${NTT_DEFAULT_BACKEND} doesn't exist")
+target_include_directories(ntt
+    PUBLIC ${CMAKE_SOURCE_DIR}/include
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/common/headers
+)
+
+target_compile_options(ntt PRIVATE -Wall -Wextra -Wpedantic)
+
+if(NTT_ENABLE_LOGGING)
+    target_compile_definitions(ntt PUBLIC NTT_LOG_ENABLED)
 endif()
-add_library(ntt::default ALIAS ntt_${NTT_DEFAULT_BACKEND})
 
-
+add_library(ntt::ntt ALIAS ntt)
