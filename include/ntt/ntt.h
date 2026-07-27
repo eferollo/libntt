@@ -2,6 +2,7 @@
 #define NTT_H
 
 #include "ntt/ntt_adapter.h"
+#include "ntt/ntt_log.h"
 
 #ifdef __cplusplus
 extern "C" {

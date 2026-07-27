@@ -1,8 +1,7 @@
 #ifndef NTT_ADAPTER_H
 #define NTT_ADAPTER_H
 
-#include <stdbool.h>
-#include <stdint.h>
+#include "ntt_config.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -19,11 +18,6 @@ extern "C" {
  * library may not understand its ABI contract.
  */
 #define NTT_ADAPTER_ABI_VERSION 0x01
-
-/**
- * @brief Configuration object used to create an NTT context.
- */
-typedef struct ntt_config_s ntt_config;
 
 /**
  * @brief Validates whether a modulus is supported by an NTT Adapter.
@@ -140,23 +134,6 @@ struct ntt_adapter_s {
 };
 
 /**
- * @brief Opaque handle identifying one NTT adapter.
- *
- * An adapter provides a complete implementation of the NTT operations. Its
- * internal arithmetic, coefficient representation, precomputation strategy,
- * and hardware-specific optimizations are hidden from the common library.
- */
-typedef struct ntt_adapter_s ntt_adapter;
-
-/**
- * @brief Optional configuration flags for an NTT context.
- */
-typedef enum {
-    /* Request adapter-specific precomputation when supported */
-    NTT_CONFIG_PRECOMPUTE = 1u << 0,
-} ntt_config_flags;
-
-/**
  * @brief Describe the capabilities provided by an NTT adapter.
  */
 typedef enum {
@@ -175,124 +152,13 @@ typedef enum {
 } ntt_adapter_capabilities;
 
 /**
- * @brief Creates an empty NTT configuration object.
+ * @brief Opaque handle identifying one NTT adapter.
  *
- * @return Newly allocated ntt_config object.
- * @return NULL on allocation failure.
+ * An adapter provides a complete implementation of the NTT operations. Its
+ * internal arithmetic, coefficient representation, precomputation strategy,
+ * and hardware-specific optimizations are hidden from the common library.
  */
-ntt_config *ntt_config_new(void);
-
-/**
- * @brief Release an NTT configuration object.
- *
- * @param[in] config Configuraton object to release.
- */
-void ntt_config_free(ntt_config *config);
-
-/* ntt_config set helper functions */
-
-/**
- * @brief Sets the modulus q in the NTT configuration.
- *
- * @param[in,out] config NTT configuration.
- * @param[in]     q      Prime modulus.
- *
- * @return NTT_OK on success.
- * @return NTT_ERROR on invalid input.
- */
-int ntt_config_set_modulus(ntt_config *config, uint32_t q);
-
-/**
- * @brief Sets the NTT transform size.
- *
- * @param[in,out] config NTT configuration.
- * @param[in]     n      Transform size.
- *
- * @return NTT_OK on success.
- * @return NTT_ERROR on invalid input.
- */
-int ntt_config_set_size(ntt_config *config, uint32_t n);
-
-/**
- * @brief Sets the primitive n-th root of unity.
- *
- * @param[in,out] config NTT configuration.
- * @param[in]     omega  Primitive n-th root of unity modulo q.
- *
- * @return NTT_OK on success.
- * @return NTT_ERROR on invalid input.
- */
-int ntt_config_set_omega(ntt_config *config, uint32_t omega);
-
-/**
- * @brief Sets the primitive 2n-th root of unity.
- *
- * @param[in,out] config NTT configuration.
- * @param[in]     psi  Primitive 2n-th root of unity modulo q.
- *
- * @return NTT_OK on success.
- * @return NTT_ERROR on invalid input.
- */
-int ntt_config_set_psi(ntt_config *config, uint32_t psi);
-
-/**
- * @brief Sets configuration flags.
- *
- * @param[in,out] config NTT configuration.
- * @param[in]     flags Configuration flags.
- *
- * @return NTT_OK on success.
- * @return NTT_ERROR on invalid input.
- */
-int ntt_config_set_flags(ntt_config *config, uint32_t flags);
-
-
-/* ntt_config getter helper functions */
-
-/**
- * @brief Returns the modulus q.
- *
- * @param[in] config NTT configuration.
- *
- * @return Prime modulus q.
- */
-uint32_t ntt_config_get_modulus(const ntt_config *config);
-
-/**
- * @brief Returns the NTT transform size.
- *
- * @param[in] config NTT configuration.
- *
- * @return Transform size n.
- */
-uint32_t ntt_config_get_size(const ntt_config *config);
-
-/**
- * @brief Returns the primitive n-th root of unity.
- *
- * @param[in] config NTT configuration.
- *
- * @return Primitive n-th root of unity omega.
- */
-uint32_t ntt_config_get_omega(const ntt_config *config);
-
-/**
- * @brief Returns the primitive 2n-th root of unity.
- *
- * @param[in] config NTT configuration.
- *
- * @return Primitive 2n-th root of unity psi.
- */
-uint32_t ntt_config_get_psi(const ntt_config *config);
-
-/**
- * @brief Returns the configuration flags.
- *
- * @param[in] config NTT configuration.
- *
- * @return Configuration flags.
- */
-uint32_t ntt_config_get_flags(const ntt_config *config);
+typedef struct ntt_adapter_s ntt_adapter;
 
 /**
  * @brief Returns the ABI version required by an NTT adapter descriptor.

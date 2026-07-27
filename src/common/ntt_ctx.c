@@ -21,7 +21,7 @@ ntt_ctx *ntt_create(const ntt_adapter *adapter, const ntt_config *config)
 
     if (adapter->validate_modulus == NULL || adapter->setup == NULL ||
         adapter->teardown == NULL) {
-        NTT_LOG(NTT_LOG_ERROR, "MIssing NTT adapter callbacks");
+        NTT_LOG(NTT_LOG_ERROR, "Missing NTT adapter callbacks");
         return NULL;
     }
 
@@ -48,6 +48,28 @@ ntt_ctx *ntt_create(const ntt_adapter *adapter, const ntt_config *config)
                 adapter->name != NULL ? adapter->name : "<none>");
         return NULL;
     }
+
+    /*
+     * Derive/validate omega and psi generically, before any adapter ever
+     * sees the config. This is deliberately common code, not per-adapter:
+     * the math (which roots exist, how they relate) doesn't depend on the
+     * arithmetic representation an adapter chooses, only the transform
+     * itself does. A local copy is resolved so the caller's ntt_config
+     * object is never mutated as a side effect of ntt_create().
+     */
+    ntt_config resolved = *config;
+    if (ntt__resolve_roots(q,
+                           n,
+                           ntt_config_get_transform_type(config),
+                           &resolved.omega,
+                           &resolved.psi) == false) {
+        NTT_LOG(NTT_LOG_ERROR,
+                "Failed to resolve omega/psi for q=%u n=%u",
+                q,
+                n);
+        return NULL;
+    }
+
     ctx = calloc(1, sizeof(*ctx));
     if (ctx == NULL) {
         NTT_LOG(NTT_LOG_ERROR, "ctx allocation failed");
@@ -63,7 +85,7 @@ ntt_ctx *ntt_create(const ntt_adapter *adapter, const ntt_config *config)
      * initialized by the selected adapter. The common layer deliberately does
      * not inspect or manipulate the opaque adapter state.
      */
-    ctx->state = adapter->setup(config);
+    ctx->state = adapter->setup(&resolved);
     if (ctx->state == NULL) {
         NTT_LOG(NTT_LOG_ERROR,
                 "Setup failed for adapter %s",
@@ -76,8 +98,8 @@ ntt_ctx *ntt_create(const ntt_adapter *adapter, const ntt_config *config)
             adapter->name != NULL ? adapter->name : "<none>",
             q,
             n,
-            ntt_config_get_omega(config),
-            ntt_config_get_psi(config),
+            resolved.omega,
+            resolved.psi,
             flags);
     return ctx;
 

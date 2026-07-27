@@ -1,4 +1,3 @@
-#include "ntt/ntt_log.h"
 #include "ntt_internal.h"
 #include "string.h"
 
@@ -21,6 +20,18 @@ void ntt_config_free(ntt_config *config)
 
     ZERO_STRUCTP(config);
     SAFE_FREE(config);
+}
+
+/* ntt_config setters */
+
+int ntt_config_set_transform_type(ntt_config *config, ntt_transform_type type)
+{
+    if (config == NULL) {
+        NTT_LOG(NTT_LOG_DEBUG, "Invalid argument");
+        return NTT_ERROR;
+    }
+    config->transform_type = type;
+    return NTT_OK;
 }
 
 int ntt_config_set_modulus(ntt_config *config, uint32_t q)
@@ -71,6 +82,17 @@ int ntt_config_set_flags(ntt_config *config, uint32_t flags)
     }
     config->flags = flags;
     return NTT_OK;
+}
+
+/* ntt_config getters */
+
+ntt_transform_type ntt_config_get_transform_type(const ntt_config *config)
+{
+    if (config == NULL) {
+        NTT_LOG(NTT_LOG_DEBUG, "Invalid argument");
+        return NTT_TRANSFORM_NEGACYCLIC;
+    }
+    return config->transform_type;
 }
 
 uint32_t ntt_config_get_modulus(const ntt_config *config)
