@@ -24,6 +24,9 @@ struct ntt_ctx_s {
 
 bool ntt__is_power_of_two(uint32_t x);
 int ntt__bitrev_permute(uint32_t *a, uint32_t n);
+bool ntt__validate_transform_params(uint32_t q,
+                                    uint32_t n,
+                                    ntt_transform_type type);
 bool ntt__resolve_roots(uint32_t q,
                         uint32_t n,
                         ntt_transform_type type,

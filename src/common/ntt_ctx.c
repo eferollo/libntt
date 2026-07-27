@@ -8,6 +8,7 @@ ntt_ctx *ntt_create(const ntt_adapter *adapter, const ntt_config *config)
 {
     ntt_ctx *ctx = NULL;
     uint32_t q, n, flags;
+    ntt_transform_type type;
 
     if (adapter == NULL || config == NULL) {
         NTT_LOG(NTT_LOG_ERROR, "Invalid NTT adapter or configuration");
@@ -26,6 +27,15 @@ ntt_ctx *ntt_create(const ntt_adapter *adapter, const ntt_config *config)
     }
 
     q = ntt_config_get_modulus(config);
+    n = ntt_config_get_size(config);
+    flags = ntt_config_get_flags(config);
+
+    /*
+     * Adapter validation of the modulus is intentionally limited to the
+     * properties of the modulus that are intrinsic to the selected Adapter's
+     * arithmetic backend. Transform-size and root-of-unity requirements are
+     * common NTT rules and are validated below before root resolution.
+     */
     if (adapter->validate_modulus(q) == false) {
         NTT_LOG(NTT_LOG_ERROR,
                 "Unsupported modulus q=%u for adapter %s",
@@ -34,18 +44,22 @@ ntt_ctx *ntt_create(const ntt_adapter *adapter, const ntt_config *config)
         return NULL;
     }
 
-    n = ntt_config_get_size(config);
-    if (ntt__is_power_of_two(n) == false) {
-        NTT_LOG(NTT_LOG_ERROR, "n=%u is not a power of two", n);
-        return NULL;
-    }
-
-    flags = ntt_config_get_flags(config);
     if (ntt_adapter_supports_flags(adapter, flags) == false) {
         NTT_LOG(NTT_LOG_ERROR,
                 "Unsupported configuration flags 0x%x for adapter %s",
                 flags & ~adapter->supported_flags,
                 adapter->name != NULL ? adapter->name : "<none>");
+        return NULL;
+    }
+
+    /*
+     * Validate the complete trnasform domain before resolving roots. This keeps
+     * ntt__resolve_roots() focused on finding or validating the actual root
+     * values rather than deciding whether the (q, n) domain is valid.
+     */
+    type = ntt_config_get_transform_type(config);
+    if (ntt__validate_transform_params(q, n, type) == false) {
+        /* Already verbose logging */
         return NULL;
     }
 

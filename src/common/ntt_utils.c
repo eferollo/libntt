@@ -453,15 +453,6 @@ bool ntt__resolve_roots(uint32_t q,
             return true;
         }
 
-        if ((q - 1) % n != 0) {
-            NTT_LOG(
-                NTT_LOG_ERROR,
-                "n=%u does not divide q-1=%u: no primitive n-th root exists",
-                n,
-                q - 1);
-            return false;
-        }
-
         uint32_t g;
         if (!ntt__find_primitive_root(q, &g)) {
             NTT_LOG(NTT_LOG_ERROR, "no primitive root found for q=%u", q);
@@ -524,15 +515,6 @@ bool ntt__resolve_roots(uint32_t q,
     }
 
     /* Neither given: derive both from scratch. */
-    if ((q - 1) % (2ull * n) != 0) {
-        NTT_LOG(NTT_LOG_ERROR,
-                "2n=%llu does not divide q-1=%u: modulus does not support "
-                "a negacyclic transform of size %u",
-                (unsigned long long)(2ull * n),
-                q - 1,
-                n);
-        return false;
-    }
     uint32_t g;
     if (!ntt__find_primitive_root(q, &g)) {
         NTT_LOG(NTT_LOG_ERROR, "no primitive root found for q=%u", q);
@@ -592,4 +574,62 @@ int ntt__bitrev_permute(uint32_t *a, uint32_t n)
         }
     }
     return 0;
+}
+
+/**
+ * @brief Validates the generic mathematical requirements of an NTT domain.
+ *
+ * This function validates constraints that depend on both the modulus and
+ * the transform size. Adapter-specific modulus requirements, such as
+ * primality checks or reduction-backend constraints, remain in the adapter's
+ * validate_modulus callback.
+ *
+ * For a cyclic transform, a primitive n-th root of unity exists in the
+ * multiplicative group of a prime field only when n divides q - 1. For a
+ * negacyclic transform modulo x^n + 1, a primitive 2n-th root is required,
+ * so 2n must divide q - 1.
+ *
+ * @param[in] q    Prime modulus already validated by the selected adapter.
+ * @param[in] n    Transform size.
+ * @param[in] type Transform type.
+ *
+ * @return true if the generic NTT domain requirements are satisfied.
+ * @return false otherwise.
+ */
+bool ntt__validate_transform_params(uint32_t q,
+                                    uint32_t n,
+                                    ntt_transform_type type)
+{
+
+    if (q <= 2 || n == 0 || !ntt__is_power_of_two(n)) {
+        NTT_LOG(NTT_LOG_ERROR,
+                "Invalid NTT transform parameters: q=%u n=%u",
+                q,
+                n);
+        return false;
+    }
+
+    uint64_t order;
+
+    switch (type) {
+    case NTT_TRANSFORM_CYCLIC:
+        order = n;
+        break;
+    case NTT_TRANSFORM_NEGACYCLIC:
+        order = 2ull * n;
+        break;
+    default:
+        NTT_LOG(NTT_LOG_ERROR, "Unsupported NTT transform type=%d", (int)type);
+        return false;
+    }
+
+    if (((uint64_t)(q - 1)) % order != 0) {
+        NTT_LOG(NTT_LOG_ERROR,
+                "required root order=%llu does not divide q-1=%u",
+                (unsigned long long)order,
+                q - 1);
+        return false;
+    }
+
+    return true;
 }
