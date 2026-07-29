@@ -144,7 +144,7 @@ static int iterative_fft(ntt_scalar_toy_state *state,
     uint32_t n = state->n;
     uint32_t q = state->q;
 
-    rc = ntt__bitrev_permute(a, n);
+    rc = ntt_bitrev_permute(a, n);
     if (rc == -1) {
         NTT_LOG(NTT_LOG_ERROR, "Bit reversal failed");
         return NTT_ERROR;

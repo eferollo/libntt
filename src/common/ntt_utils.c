@@ -526,57 +526,6 @@ bool ntt__resolve_roots(uint32_t q,
 }
 
 /**
- * @brief Checks whether a value is a power of two.
- *
- * @param[in] x Value to test.
- *
- * @return true If x is a power of two.
- * @return false Otherwise.
- */
-bool ntt__is_power_of_two(uint32_t x)
-{
-    return x != 0 && (x & (x - 1)) == 0;
-}
-
-/**
- * @brief Reorders an array into bit-reversed order.
- *
- * Applies the standard in-place bit-reversal permutation used by iterative
- * radix-2 FFT and NTT algorithms. Each index is mapped to the integer whose
- * binary representation is the reverse of the original index, allowing the
- * subsequent butterfly stages to process contiguous elements.
- *
- * The permutation is performed in-place and runs in O(n) time using constant
- * additional memory.
- *
- * @param[in,out] a    Pointer to the array to permute.
- * @param[in] n        Number of elements in the array. Must be a power of two.
- *
- * @return 0 on success.
- * @return -1 if the input array pointer is NULL.
- */
-int ntt__bitrev_permute(uint32_t *a, uint32_t n)
-{
-    if (a == NULL) {
-        return -1;
-    }
-
-    for (uint32_t i = 1, j = 0; i < n; i++) {
-        uint32_t bit = n >> 1;
-        for (; j & bit; bit >>= 1) {
-            j ^= bit;
-        }
-        j ^= bit;
-        if (i < j) {
-            uint32_t tmp = a[i];
-            a[i] = a[j];
-            a[j] = tmp;
-        }
-    }
-    return 0;
-}
-
-/**
  * @brief Validates the generic mathematical requirements of an NTT domain.
  *
  * This function validates constraints that depend on both the modulus and
@@ -601,7 +550,7 @@ bool ntt__validate_transform_params(uint32_t q,
                                     ntt_transform_type type)
 {
 
-    if (q <= 2 || n == 0 || !ntt__is_power_of_two(n)) {
+    if (q <= 2 || n == 0 || !ntt_is_power_of_two(n)) {
         NTT_LOG(NTT_LOG_ERROR,
                 "Invalid NTT transform parameters: q=%u n=%u",
                 q,
@@ -634,39 +583,35 @@ bool ntt__validate_transform_params(uint32_t q,
     return true;
 }
 
-/**
- * @brief Tests whether a 32-bit unsigned integer is prime.
- *
- * Performs a deterministic Miller-Rabin primality test over the complete
- * uint32_t domain.
- *
- * The fixed witness set {2, 7, 61} is sufficient for every integer smaller
- * than 4,759,123,141. Since UINT32_MAX is 4,294,967,295, this bound covers
- * every possible uint32_t input. Therefore, unlike a general probabilistic
- * Miller-Rabin implementation, this function returns a mathematically
- * certain result for the complete supported input range.
- *
- * The implementation first handles small values and even integers directly.
- * For the remaining odd candidate, q - 1 is decomposed as
- *
- * @f[
- * q - 1 = d \cdot 2^s,
- * @f]
- *
- * where @f$d@f$ is odd. Each fixed witness is then tested using the standard
- * Miller-Rabin strong probable-prime test.
- *
- * The function is generic number-theory functionality and is therefore kept
- * independent of any specific arithmetic backend. The modulo operations used
- * here are acceptable because primality testing is performed only during
- * context initialization and is not part of the NTT hot path.
- *
- * @param[in] q Integer to test for primality.
- *
- * @return true if @p q is prime.
- * @return false if @p q is composite or less than two.
- */
-bool ntt__is_prime(uint32_t q)
+/* Public utils API */
+
+bool ntt_is_power_of_two(uint32_t x)
+{
+    return x != 0 && (x & (x - 1)) == 0;
+}
+
+int ntt_bitrev_permute(uint32_t *a, uint32_t n)
+{
+    if (a == NULL) {
+        return -1;
+    }
+
+    for (uint32_t i = 1, j = 0; i < n; i++) {
+        uint32_t bit = n >> 1;
+        for (; j & bit; bit >>= 1) {
+            j ^= bit;
+        }
+        j ^= bit;
+        if (i < j) {
+            uint32_t tmp = a[i];
+            a[i] = a[j];
+            a[j] = tmp;
+        }
+    }
+    return 0;
+}
+
+bool ntt_is_prime(uint32_t q)
 {
     static const uint32_t witnesses[] = {2u, 7u, 61u};
 
