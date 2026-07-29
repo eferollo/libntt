@@ -30,7 +30,7 @@ int ntt_negacyclic_mul(uint32_t *a,
     if (ctx == NULL || a == NULL || b == NULL || c == NULL ||
         ctx->adapter == NULL || ctx->adapter->negacyclic_mul == NULL ||
         ctx->state == NULL) {
-        NTT_LOG(NTT_LOG_ERROR, "Invalid arguments or backend");
+        NTT_LOG(NTT_LOG_ERROR, "Invalid arguments or adapter");
         return NTT_ERROR;
     }
     return ctx->adapter->negacyclic_mul(ctx->state, a, b, c);
