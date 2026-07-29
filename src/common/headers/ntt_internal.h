@@ -32,6 +32,7 @@ bool ntt__resolve_roots(uint32_t q,
                         ntt_transform_type type,
                         uint32_t *omega,
                         uint32_t *psi);
+bool ntt__is_prime(uint32_t q);
 
 #define SAFE_FREE(ptr)       \
     do {                     \

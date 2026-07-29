@@ -633,3 +633,105 @@ bool ntt__validate_transform_params(uint32_t q,
 
     return true;
 }
+
+/**
+ * @brief Tests whether a 32-bit unsigned integer is prime.
+ *
+ * Performs a deterministic Miller-Rabin primality test over the complete
+ * uint32_t domain.
+ *
+ * The fixed witness set {2, 7, 61} is sufficient for every integer smaller
+ * than 4,759,123,141. Since UINT32_MAX is 4,294,967,295, this bound covers
+ * every possible uint32_t input. Therefore, unlike a general probabilistic
+ * Miller-Rabin implementation, this function returns a mathematically
+ * certain result for the complete supported input range.
+ *
+ * The implementation first handles small values and even integers directly.
+ * For the remaining odd candidate, q - 1 is decomposed as
+ *
+ * @f[
+ * q - 1 = d \cdot 2^s,
+ * @f]
+ *
+ * where @f$d@f$ is odd. Each fixed witness is then tested using the standard
+ * Miller-Rabin strong probable-prime test.
+ *
+ * The function is generic number-theory functionality and is therefore kept
+ * independent of any specific arithmetic backend. The modulo operations used
+ * here are acceptable because primality testing is performed only during
+ * context initialization and is not part of the NTT hot path.
+ *
+ * @param[in] q Integer to test for primality.
+ *
+ * @return true if @p q is prime.
+ * @return false if @p q is composite or less than two.
+ */
+bool ntt__is_prime(uint32_t q)
+{
+    static const uint32_t witnesses[] = {2u, 7u, 61u};
+
+    if (q < 2u) {
+        NTT_LOG(NTT_LOG_ERROR, "Primality test failed: q=%u is less than 2", q);
+        return false;
+    }
+
+    if (q == 2u || q == 3u) {
+        return true;
+    }
+
+    if ((q & 1u) == 0u) {
+        NTT_LOG(NTT_LOG_ERROR, "Primality test failed: q=%u is even", q);
+        return false;
+    }
+
+    /*
+     * Decompose q - 1 as d * 2^s, where d is odd.
+     */
+    uint32_t d = q - 1u;
+    uint32_t s = 0u;
+
+    while ((d & 1u) == 0u) {
+        d >>= 1;
+        s++;
+    }
+
+    for (size_t i = 0; i < sizeof(witnesses) / sizeof(witnesses[0]); i++) {
+        uint32_t a = witnesses[i];
+
+        /*
+         * A witness greater than or equal to q is not meaningful for this
+         * candidate. This also handles small prime candidates.
+         */
+        if (a >= q) {
+            continue;
+        }
+
+        uint32_t x = modpow(a, d, q);
+
+        if (x == 1u || x == q - 1u) {
+            continue;
+        }
+
+        bool witness_passed = false;
+
+        for (uint32_t r = 1u; r < s; r++) {
+            x = mulmod(x, x, q);
+
+            if (x == q - 1u) {
+                witness_passed = true;
+                break;
+            }
+        }
+
+        if (!witness_passed) {
+            NTT_LOG(NTT_LOG_ERROR,
+                    "Primality test failed: q=%u is composite "
+                    "(Miller-Rabin witness=%u)",
+                    q,
+                    a);
+            return false;
+        }
+    }
+
+    return true;
+}
