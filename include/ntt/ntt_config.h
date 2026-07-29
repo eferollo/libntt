@@ -42,8 +42,10 @@ typedef enum {
  * @brief Optional configuration flags for an NTT context.
  */
 typedef enum {
-    /* Request adapter-specific precomputation when supported */
-    NTT_CONFIG_PRECOMPUTE = 1u << 0,
+    /* Use Barrett reduction for scalar modular multiplication. */
+    NTT_CONFIG_REDUCTION_BARRETT = 1u << 0,
+    /* Use Montgomery reduction for scalar modular multiplication. */
+    NTT_CONFIG_REDUCTION_MONTGOMERY = 1u << 1,
 } ntt_config_flags;
 
 /**
@@ -128,7 +130,6 @@ int ntt_config_set_psi(ntt_config *config, uint32_t psi);
  * @return NTT_ERROR on invalid input.
  */
 int ntt_config_set_flags(ntt_config *config, uint32_t flags);
-
 
 /* ntt_config getter helper functions */
 

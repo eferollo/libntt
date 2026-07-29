@@ -11,9 +11,12 @@ set(NTT_ADAPTER_SOURCES
     adapters/scalar_toy/ntt_arith.c
     adapters/scalar_toy/ntt_adapter.c
     adapters/scalar_toy/ntt.c
+    adapters/scalar/ntt_arith.c
+    adapters/scalar/ntt_adapter.c
+    adapters/scalar/ntt.c
+    adapters/scalar/redc/barrett.c
+    adapters/scalar/redc/montgomery.c
     # -- We'll add here future adapters here directly, no branching needed.
-    #    Distinct ntt__<adapter>_* symbol names per backend are what
-    #    makes listing them all unconditionally safe. CHECK THIS
 )
 
 add_library(ntt STATIC
