@@ -1,3 +1,4 @@
+#include "ntt/ntt_config.h"
 #include "ntt_scalar_toy_internal.h"
 #include <stdint.h>
 #include <stdlib.h>
@@ -95,13 +96,14 @@ void ntt__adapter_teardown(void *state_ptr)
  * optimized arithmetic adapters, no modulus-specific precomputation or
  * restrictions are required.
  *
- * @param[in] q     Modulus to validate.
+ * @param[in] config NTT configuration.
  *
  * @return true if q is a valid modulus for this adapter.
  * @return false otherwise.
  */
-bool ntt__validate_modulus(uint32_t q)
+bool ntt__validate_modulus(const ntt_config *config)
 {
+    uint32_t q = ntt_config_get_modulus(config);
     return q > 1;
 }
 

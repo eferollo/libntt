@@ -31,7 +31,7 @@ uint32_t ntt__mulmod(uint32_t a, uint32_t b, uint32_t q);
 uint32_t ntt__modpow(uint32_t base, uint32_t exp, uint32_t q);
 uint32_t ntt__modinv(uint32_t a, uint32_t q);
 
-bool ntt__validate_modulus(uint32_t q);
+bool ntt__validate_modulus(const ntt_config *config);
 void *ntt__adapter_setup(const ntt_config *config);
 void ntt__adapter_teardown(void *state);
 
