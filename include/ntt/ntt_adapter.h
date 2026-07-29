@@ -22,12 +22,12 @@ extern "C" {
 /**
  * @brief Validates whether a modulus is supported by an NTT Adapter.
  *
- * @param[in] q Modulus to validate.
+ * @param[in] config NTT configuration.
  *
- * @return true if q is supported by the Adapter.
+ * @return true if config's q is supported by the Adapter.
  * @return false otherwise.
  */
-typedef bool (*ntt_validate_modulus_fn)(uint32_t q);
+typedef bool (*ntt_validate_modulus_fn)(const ntt_config *config);
 
 /**
  * @brief Initializes Adapter-specific state for an NTT context.

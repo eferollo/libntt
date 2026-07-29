@@ -36,7 +36,7 @@ ntt_ctx *ntt_create(const ntt_adapter *adapter, const ntt_config *config)
      * arithmetic backend. Transform-size and root-of-unity requirements are
      * common NTT rules and are validated below before root resolution.
      */
-    if (adapter->validate_modulus(q) == false) {
+    if (adapter->validate_modulus(config) == false) {
         NTT_LOG(NTT_LOG_ERROR,
                 "Unsupported modulus q=%u for adapter %s",
                 q,
@@ -53,7 +53,7 @@ ntt_ctx *ntt_create(const ntt_adapter *adapter, const ntt_config *config)
     }
 
     /*
-     * Validate the complete trnasform domain before resolving roots. This keeps
+     * Validate the complete transform domain before resolving roots. This keeps
      * ntt__resolve_roots() focused on finding or validating the actual root
      * values rather than deciding whether the (q, n) domain is valid.
      */
