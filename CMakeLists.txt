@@ -41,6 +41,8 @@ option(NTT_ENABLE_LOGGING
     ON
 )
 
+install(FILES LICENSE DESTINATION share/licenses/libntt)
+
 # ---------------------------------------------------------------------------
 # Library
 # ---------------------------------------------------------------------------
