@@ -1,4 +1,41 @@
+#include "ntt/ntt_log.h"
 #include "ntt_scalar_internal.h"
+
+/**
+ * @brief Applies an in-place bit-reversal permutation using a precomputed
+ *        lookup table.
+ *
+ * Reorders an array according to the supplied bit-reversal table, where
+ * @p table[i] contains the bit-reversed index of @p i. Using a cached
+ * permutation table avoids recomputing bit-reversed indices for every
+ * transform and reduces the overhead of repeated NTT executions.
+ *
+ * @param[in,out] a     Array to permute.
+ * @param[in] table     Precomputed bit-reversal table.
+ * @param[in] n         Number of elements in @p a.
+ *
+ * @return NTT_OK on success.
+ * @return NTT_ERROR if an input pointer is NULL.
+ */
+static int
+scalar_bitrev_permute_cached(uint32_t *a, const uint32_t *table, uint32_t n)
+{
+    if (a == NULL || table == NULL) {
+        NTT_LOG(NTT_LOG_ERROR, "Invalid arguments");
+        return NTT_ERROR;
+    }
+
+    for (uint32_t i = 0; i < n; i++) {
+        uint32_t j = table[i];
+        if (i < j) {
+            uint32_t tmp = a[i];
+            a[i] = a[j];
+            a[j] = tmp;
+        }
+    }
+
+    return NTT_OK;
+}
 
 /**
  * @brief Computes the multiplicative inverse of a non-zero field element.
@@ -303,10 +340,27 @@ void *ntt__scalar_adapter_setup(const ntt_config *config)
     state->psi_pow = calloc(n, sizeof(uint32_t));
     state->psi_inv_pow = calloc(n, sizeof(uint32_t));
 
+    /*
+     * Allocate a lookup table containing the bit-reversed index of every
+     * position in an n-point transform.
+     */
+    state->bitrev = calloc(n, sizeof(uint32_t));
+
     if (state->fwd_twiddle == NULL || state->inv_twiddle == NULL ||
-        state->psi_pow == NULL || state->psi_inv_pow == NULL) {
+        state->psi_pow == NULL || state->psi_inv_pow == NULL ||
+        state->bitrev == NULL) {
         NTT_LOG(NTT_LOG_ERROR, "Scalar adapter table allocation failed");
         goto cleanup;
+    }
+
+    /*
+     * Precompute the bit-reversal permutation used by the iterative radix-2
+     * transforms. Caching these indices avoids recomputing the permutation
+     * for every forward and inverse NTT, replacing repeated bit manipulations
+     * with simple table lookups throughout the lifetime of the context.
+     */
+    for (uint32_t i = 0; i < n; i++) {
+        state->bitrev[i] = ntt_reverse_bits(i, state->stages);
     }
 
     /*
@@ -460,8 +514,8 @@ static int scalar_forward_internal(ntt_scalar_state *state, uint32_t *a)
         return NTT_ERROR;
     }
 
-    rc = ntt_bitrev_permute(a, state->n);
-    if (rc == -1) {
+    rc = scalar_bitrev_permute_cached(a, state->bitrev, state->n);
+    if (rc != NTT_OK) {
         NTT_LOG(NTT_LOG_ERROR, "Bit reversal failed");
         return NTT_ERROR;
     }
@@ -557,8 +611,8 @@ static int scalar_inverse_internal(ntt_scalar_state *state, uint32_t *a)
         }
     }
 
-    rc = ntt_bitrev_permute(a, state->n);
-    if (rc == -1) {
+    rc = scalar_bitrev_permute_cached(a, state->bitrev, state->n);
+    if (rc != NTT_OK) {
         NTT_LOG(NTT_LOG_ERROR, "Bit reversal failed");
         return NTT_ERROR;
     }

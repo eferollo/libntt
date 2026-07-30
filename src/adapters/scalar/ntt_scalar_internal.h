@@ -38,6 +38,9 @@ typedef struct {
     uint32_t psi_inv;      /* inverse primitive 2n-th root of unity mod q */
     uint32_t *psi_pow;     /* psi_pow[i] = psi^i mod q, i = 0..n-1 */
     uint32_t *psi_inv_pow; /* psi_inv_pow[i] = psi^-i mod q, i = 0..n-1 */
+    uint32_t *bitrev;      /* bitrev[i] = bit-reversed i over log2(n) bits,
+                            * precomputed once at setup so forward() or
+                            * inverse() never recompute it per call. */
 
     ntt_scalar_redc reduction; /* selected reduction mode */
 
