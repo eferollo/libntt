@@ -66,23 +66,19 @@ bool ntt_is_prime(uint32_t q);
 bool ntt_is_power_of_two(uint32_t n);
 
 /**
- * @brief Reorders an array into bit-reversed order.
+ * @brief Returns the bit-reversed representation of an integer.
  *
- * Applies the standard in-place bit-reversal permutation used by iterative
- * radix-2 FFT and NTT algorithms. Each index is mapped to the integer whose
- * binary representation is the reverse of the original index, allowing the
- * subsequent butterfly stages to process contiguous elements.
+ * Reverses the least significant @p bits bits of @p x. For an N-point
+ * radix-2 transform, @p bits is equal to @f$\log_2(N)@f$, so the result
+ * corresponds to the bit-reversed index used by iterative NTT
+ * algorithms.
  *
- * The permutation is performed in-place and runs in O(n) time using constant
- * additional memory.
+ * @param[in] x    Value whose bits are reversed.
+ * @param[in] bits Number of least significant bits to reverse.
  *
- * @param[in,out] a    Pointer to the array to permute.
- * @param[in] n        Number of elements in the array. Must be a power of two.
- *
- * @return 0 on success.
- * @return -1 if the input array pointer is NULL.
+ * @return Bit-reversed value of @p x over the specified bit width.
  */
-int ntt_bitrev_permute(uint32_t *a, uint32_t n);
+uint32_t ntt_reverse_bits(uint32_t x, uint32_t bits);
 
 #ifdef __cplusplus
 }

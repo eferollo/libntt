@@ -590,25 +590,14 @@ bool ntt_is_power_of_two(uint32_t x)
     return x != 0 && (x & (x - 1)) == 0;
 }
 
-int ntt_bitrev_permute(uint32_t *a, uint32_t n)
+uint32_t ntt_reverse_bits(uint32_t x, uint32_t bits)
 {
-    if (a == NULL) {
-        return -1;
+    uint32_t r = 0;
+    for (uint32_t i = 0; i < bits; i++) {
+        r = (r << 1) | (x & 1u);
+        x >>= 1;
     }
-
-    for (uint32_t i = 1, j = 0; i < n; i++) {
-        uint32_t bit = n >> 1;
-        for (; j & bit; bit >>= 1) {
-            j ^= bit;
-        }
-        j ^= bit;
-        if (i < j) {
-            uint32_t tmp = a[i];
-            a[i] = a[j];
-            a[j] = tmp;
-        }
-    }
-    return 0;
+    return r;
 }
 
 bool ntt_is_prime(uint32_t q)

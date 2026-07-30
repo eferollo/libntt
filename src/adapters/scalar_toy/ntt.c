@@ -5,6 +5,45 @@
 #include <string.h>
 
 /**
+ * @brief Reorders an array into bit-reversed order.
+ *
+ * Applies the standard in-place bit-reversal permutation used by iterative
+ * radix-2 FFT and NTT algorithms. Each index is mapped to the integer whose
+ * binary representation is the reverse of the original index, allowing the
+ * subsequent butterfly stages to process contiguous elements.
+ *
+ * The permutation is performed in-place and runs in O(n) time using constant
+ * additional memory.
+ *
+ * @param[in,out] a    Pointer to the array to permute.
+ * @param[in] n        Number of elements in the array. Must be a power of two.
+ *
+ * @return NTT_OK on success.
+ * @return NTT_ERROR if the input array pointer is NULL.
+ */
+static int bitrev_permute(uint32_t *a, uint32_t n)
+{
+    if (a == NULL) {
+        NTT_LOG(NTT_LOG_ERROR, "Invalid argument");
+        return NTT_ERROR;
+    }
+
+    for (uint32_t i = 1, j = 0; i < n; i++) {
+        uint32_t bit = n >> 1;
+        for (; j & bit; bit >>= 1) {
+            j ^= bit;
+        }
+        j ^= bit;
+        if (i < j) {
+            uint32_t tmp = a[i];
+            a[i] = a[j];
+            a[j] = tmp;
+        }
+    }
+    return NTT_OK;
+}
+
+/**
  * @brief Initializes the scalar toy adapter state.
  *
  * Allocates and initializes all state required by the scalar toy adapter.
@@ -146,8 +185,8 @@ static int iterative_fft(ntt_scalar_toy_state *state,
     uint32_t n = state->n;
     uint32_t q = state->q;
 
-    rc = ntt_bitrev_permute(a, n);
-    if (rc == -1) {
+    rc = bitrev_permute(a, n);
+    if (rc != NTT_OK) {
         NTT_LOG(NTT_LOG_ERROR, "Bit reversal failed");
         return NTT_ERROR;
     }
