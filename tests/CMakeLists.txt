@@ -1,3 +1,6 @@
+# cmocka is required by the unit-test binaries.
+find_package(cmocka REQUIRED)
+
 # Unlike examples, tests are allowed to access the library's private
 # implementation headers. This allows tests to inspect and validate internal
 # structures and backend-specific functionality that is intentionally hidden
@@ -28,4 +31,28 @@ target_include_directories(torture_ntt
 add_test(
     NAME torture_ntt
     COMMAND torture_ntt
+)
+
+# Unit tests
+add_executable(torture_scalar_barrett
+    unittests/torture_scalar_barrett.c
+)
+
+target_link_libraries(torture_scalar_barrett
+    PRIVATE
+        ntt::ntt
+        cmocka::cmocka
+        OpenSSL::Crypto
+)
+
+target_include_directories(torture_scalar_barrett
+    PRIVATE
+        ${PROJECT_SOURCE_DIR}/src/common/headers
+        ${PROJECT_SOURCE_DIR}/src/adapters/scalar/redc
+)
+
+# Register the Barrett unit tests with CTest.
+add_test(
+    NAME torture_scalar_barrett
+    COMMAND torture_scalar_barrett
 )
