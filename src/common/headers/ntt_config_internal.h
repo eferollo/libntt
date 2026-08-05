@@ -26,10 +26,10 @@
  * @brief Internal representation of the opaque public NTT configuration object.
  */
 struct ntt_config_s {
-    uint32_t q;
+    uint64_t q;
     uint32_t n;
-    uint32_t omega;
-    uint32_t psi;
+    uint64_t omega;
+    uint64_t psi;
     uint32_t flags;
     /* defaults to NEGACYCLIC (O) via calloc */
     ntt_transform_type transform_type;

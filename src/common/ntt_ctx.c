@@ -25,7 +25,8 @@
 ntt_ctx *ntt_create(const ntt_adapter *adapter, const ntt_config *config)
 {
     ntt_ctx *ctx = NULL;
-    uint32_t q, n, flags;
+    uint64_t q;
+    uint32_t n, flags;
     ntt_transform_type type;
 
     if (adapter == NULL || config == NULL) {
@@ -56,8 +57,8 @@ ntt_ctx *ntt_create(const ntt_adapter *adapter, const ntt_config *config)
      */
     if (adapter->validate_modulus(config) == false) {
         NTT_LOG(NTT_LOG_ERROR,
-                "Unsupported modulus q=%u for adapter %s",
-                q,
+                "Unsupported modulus q=%llu for adapter %s",
+                (unsigned long long)q,
                 adapter->name != NULL ? adapter->name : "<none>");
         return NULL;
     }
@@ -96,8 +97,8 @@ ntt_ctx *ntt_create(const ntt_adapter *adapter, const ntt_config *config)
                            &resolved.omega,
                            &resolved.psi) == false) {
         NTT_LOG(NTT_LOG_ERROR,
-                "Failed to resolve omega/psi for q=%u n=%u",
-                q,
+                "Failed to resolve omega/psi for q=%llu n=%u",
+                (unsigned long long)q,
                 n);
         return NULL;
     }
@@ -126,12 +127,13 @@ ntt_ctx *ntt_create(const ntt_adapter *adapter, const ntt_config *config)
     }
 
     NTT_LOG(NTT_LOG_INFO,
-            "New NTT context: adapter=%s, q=%u n=%u omega=%u psi=%u flags=0x%x",
+            "New NTT context: adapter=%s, q=%llu n=%u omega=%llu psi=%llu "
+            "flags=0x%x",
             adapter->name != NULL ? adapter->name : "<none>",
-            q,
+            (unsigned long long)q,
             n,
-            resolved.omega,
-            resolved.psi,
+            (unsigned long long)resolved.omega,
+            (unsigned long long)resolved.psi,
             flags);
     return ctx;
 
@@ -148,11 +150,11 @@ void ntt_destroy(ntt_ctx *ctx)
     }
 
     NTT_LOG(NTT_LOG_DEBUG,
-            "NTT context adapter=%s q=%u n=%u freed",
+            "NTT context adapter=%s q=%llu n=%u freed",
             ctx->adapter != NULL && ctx->adapter->name != NULL
                 ? ctx->adapter->name
                 : "<none>",
-            ctx->q,
+            (unsigned long long)ctx->q,
             ctx->n);
 
     if (ctx->adapter != NULL && ctx->adapter->teardown != NULL) {

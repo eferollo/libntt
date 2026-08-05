@@ -19,7 +19,7 @@
 
 #include "ntt_internal.h"
 
-int ntt_forward(const ntt_ctx *ctx, uint32_t *a)
+int ntt_forward(const ntt_ctx *ctx, uint64_t *a)
 {
     if (ctx == NULL || a == NULL || ctx->adapter == NULL ||
         ctx->adapter->forward == NULL || ctx->state == NULL) {
@@ -30,7 +30,7 @@ int ntt_forward(const ntt_ctx *ctx, uint32_t *a)
     return ctx->adapter->forward(ctx->state, a);
 }
 
-int ntt_inverse(const ntt_ctx *ctx, uint32_t *a)
+int ntt_inverse(const ntt_ctx *ctx, uint64_t *a)
 {
     if (ctx == NULL || a == NULL || ctx->adapter == NULL ||
         ctx->adapter->inverse == NULL || ctx->state == NULL) {
@@ -41,9 +41,9 @@ int ntt_inverse(const ntt_ctx *ctx, uint32_t *a)
     return ctx->adapter->inverse(ctx->state, a);
 }
 
-int ntt_negacyclic_mul(uint32_t *a,
-                       uint32_t *b,
-                       uint32_t *c,
+int ntt_negacyclic_mul(uint64_t *a,
+                       uint64_t *b,
+                       uint64_t *c,
                        const ntt_ctx *ctx)
 {
     if (ctx == NULL || a == NULL || b == NULL || c == NULL ||

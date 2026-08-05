@@ -41,16 +41,15 @@ extern "C" {
  */
 
 /**
- * @brief Tests whether a 32-bit unsigned integer is prime.
+ * @brief Tests whether a 64-bit unsigned integer is prime.
  *
  * Performs a deterministic Miller-Rabin primality test over the complete
- * uint32_t domain.
+ * uint64_t domain.
  *
- * The fixed witness set {2, 7, 61} is sufficient for every integer smaller
- * than 4,759,123,141. Since UINT32_MAX is 4,294,967,295, this bound covers
- * every possible uint32_t input. Therefore, unlike a general probabilistic
- * Miller-Rabin implementation, this function returns a mathematically
- * certain result for the complete supported input range.
+ * The fixed witness set {2, 325, 9375, 28178, 450775, 9780504, 1795265022}
+ * is sufficient for every integer smaller than 2^64. Therefore, unlike a
+ * general probabilistic Miller-Rabin implementation, this function returns
+ * a mathematically certain result for the complete supported input range.
  *
  * The implementation first handles small values and even integers directly.
  * For the remaining odd candidate, q - 1 is decomposed as
@@ -72,7 +71,7 @@ extern "C" {
  * @return true if @p q is prime.
  * @return false if @p q is composite or less than two.
  */
-bool ntt_is_prime(uint32_t q);
+bool ntt_is_prime(uint64_t q);
 
 /**
  * @brief Checks whether a value is a power of two.

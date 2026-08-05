@@ -24,15 +24,18 @@
 /**
  * @brief Precomputed distinct prime factorizations of q-1 for moduli this
  *        library may actually be used with in practice (e.g., Kyber,
- *        Dilithium).
+ *        Dilithium, Goldilocks).
  *
  * Trial division on q-1 is O(sqrt(q)), which is fine if not executed in a hot
  * path, but pointless to redo on every ntt_create() call for a modulus whose
- * factorization is public and fixed. Anything not listed here falls back to
- * ntt__distinct_prime_factors() so arbitrary user-supplied moduli still work.
+ * factorization is public and fixed. For moduli larger than 32 bits, trial
+ * division is no longer feasible and the factorization table is the only
+ * supported way to auto-derive primitive roots. Anything not listed here
+ * falls back to ntt__distinct_prime_factors(), which is restricted to
+ * 32-bit moduli so arbitrary user-supplied 32-bit moduli still work.
  */
 typedef struct {
-    uint32_t q;
+    uint64_t q;
     uint32_t factors[32];
     size_t count;
 } ntt_qm1_factors;
@@ -42,24 +45,97 @@ static const ntt_qm1_factors ntt_known_moduli[] = {
     {3329, {2, 13}, 2},
     /* q = 8380417, ML-DSA, q-1 = 8380416 = 2^13 * 3 * 11 * 31 */
     {8380417, {2, 3, 11, 31}, 4},
+    /*
+     * q = 2^64 - 2^32 + 1, Goldilocks (Plonky2/3, Polygon zkEVM),
+     * q-1 = 2^32 * 3 * 5 * 17 * 257 * 65537
+     */
+    {UINT64_C(18446744069414584321), {2, 3, 5, 17, 257, 65537}, 6},
 };
 
 /*
  * Deliberately self-contained: this module runs once per ntt_create(), on
- * plain uint32_t canonical values, regardless of which adapter/arithmetic
+ * plain uint64_t canonical values, regardless of which adapter/arithmetic
  * representation is eventually selected. Reusing an adapter's mulmod here
  * would create a dependency in the wrong direction (common code depending
  * on adapter code) for no benefit, since none of this is a hot path.
+ *
+ * The modular arithmetic below must cope with 64-bit operands whose product
+ * is a 128-bit value. No 128-bit integer type is assumed to be available, so
+ * multiplication is performed with a shift-and-add (Russian peasant) loop,
+ * which is slow but obviously correct and only ever runs at setup time.
  */
-static uint32_t mulmod(uint32_t a, uint32_t b, uint32_t q)
+
+/**
+ * @brief Adds two residues modulo a 64-bit prime without 128-bit types.
+ *
+ * Handles the unsigned overflow of the 64-bit sum: when a + b wraps, the
+ * true sum is s + 2^64 and the wrapped reduction is s + (2^64 - q), which
+ * the following modular wrap produces exactly because a + b < 2q.
+ *
+ * @param a First residue in [0, q).
+ * @param b Second residue in [0, q).
+ * @param q Prime modulus.
+ *
+ * @return (a + b) mod q.
+ */
+static uint64_t addmod_u64(uint64_t a, uint64_t b, uint64_t q)
 {
-    return (uint32_t)(((uint64_t)a * (uint64_t)b) % q);
+    uint64_t s = a + b;
+    if (s >= a) {
+        return (s >= q) ? s - q : s;
+    }
+    return s + (UINT64_MAX - q + 1u);
 }
 
-static uint32_t modpow(uint32_t base, uint32_t exp, uint32_t q)
+/**
+ * @brief Multiplies two residues modulo a 64-bit prime without 128-bit
+ * types.
+ *
+ * Shift-and-add (Russian peasant) multiplication: the product is accumulated
+ * one bit of @p b at a time, reducing after every doubling so no intermediate
+ * ever exceeds 2q.
+ *
+ * @param a First residue.
+ * @param b Second residue.
+ * @param q Prime modulus.
+ *
+ * @return (a * b) mod q.
+ */
+static uint64_t mulmod(uint64_t a, uint64_t b, uint64_t q)
 {
-    uint32_t result = 1;
+    uint64_t result = 0;
+    a %= q;
+    b %= q;
+
+    while (b > 0) {
+        if (b & 1u) {
+            result = addmod_u64(result, a, q);
+        }
+        a = addmod_u64(a, a, q);
+        b >>= 1;
+    }
+
+    return result;
+}
+
+/**
+ * @brief Computes modular exponentiation using the binary exponentiation
+ * algorithm.
+ *
+ * Computes (base^exp mod q) using the square-and-multiply algorithm. Every
+ * modular multiplication is routed through mulmod().
+ *
+ * @param base Base of the exponentiation.
+ * @param exp  Non-negative exponent.
+ * @param q    Prime modulus.
+ *
+ * @return (base^exp mod q).
+ */
+static uint64_t modpow(uint64_t base, uint64_t exp, uint64_t q)
+{
+    uint64_t result = 1;
     base %= q;
+
     while (exp > 0) {
         if (exp & 1u) {
             result = mulmod(result, base, q);
@@ -77,9 +153,10 @@ static uint32_t modpow(uint32_t base, uint32_t exp, uint32_t q)
  *
  * Trial division up to sqrt(x) is sufficient here: x is always q-1 for a
  * 32-bit prime q, so x fits comfortably in 32 bits and this runs once per
- * ntt_create(), not in any hot path.
+ * ntt_create(), not in any hot path. For 64-bit moduli this function is not
+ * invoked; the known-moduli table is used instead.
  *
- * @param[in]  x           The positive integer to factorize.
+ * @param[in]  x           The positive integer to factorize (must be < 2^32).
  * @param[out] factors     Array where the distinct prime factors are stored.
  * @param[in]  max_factors Maximum number of factors that can be stored in
  *                         factors array.
@@ -88,7 +165,7 @@ static uint32_t modpow(uint32_t base, uint32_t exp, uint32_t q)
  * @return true if all distinct prime factors fit in the provided array.
  * @return false if max_factors is too small.
  */
-static bool ntt__distinct_prime_factors(uint32_t x,
+static bool ntt__distinct_prime_factors(uint64_t x,
                                         uint32_t *factors,
                                         size_t max_factors,
                                         size_t *count)
@@ -96,7 +173,7 @@ static bool ntt__distinct_prime_factors(uint32_t x,
     size_t cnt = 0;
 
     /* Try every possible divisor p up to sqrt(x). */
-    for (uint32_t p = 2; (uint64_t)p * p <= x; p++) {
+    for (uint64_t p = 2; p * p <= x; p++) {
         /* If p does not divide x, it cannot be a prime factor. */
         if (x % p != 0) {
             continue;
@@ -107,7 +184,7 @@ static bool ntt__distinct_prime_factors(uint32_t x,
         }
 
         /* Store p only once, since only distinct prime factors are needed. */
-        factors[cnt++] = p;
+        factors[cnt++] = (uint32_t)p;
 
         /*
          * Remove every occurrence of p from x.
@@ -128,14 +205,14 @@ static bool ntt__distinct_prime_factors(uint32_t x,
         if (cnt >= max_factors) {
             return false;
         }
-        factors[cnt++] = x;
+        factors[cnt++] = (uint32_t)x;
     }
 
     *count = cnt;
     return true;
 }
 
-static bool ntt__known_modulus_factors_lookup(uint32_t q,
+static bool ntt__known_modulus_factors_lookup(uint64_t q,
                                               uint32_t *factors,
                                               size_t max_factors,
                                               size_t *count)
@@ -148,7 +225,7 @@ static bool ntt__known_modulus_factors_lookup(uint32_t q,
         if (ntt_known_moduli[i].count > max_factors) {
             return false;
         }
-        for (size_t j = 0; j < ntt_known_moduli[j].count; j++) {
+        for (size_t j = 0; j < ntt_known_moduli[i].count; j++) {
             factors[j] = ntt_known_moduli[i].factors[j];
         }
         *count = ntt_known_moduli[i].count;
@@ -161,31 +238,40 @@ static bool ntt__known_modulus_factors_lookup(uint32_t q,
  * @brief Finds a primitive root (generator) of the multiplicative group
  *        modulo a prime q.
  *
+ * The factorization of q-1 is required to test generator candidates. For
+ * moduli listed in the known-moduli table the factorization is looked up;
+ * otherwise it is computed by trial division, which is only feasible for
+ * 32-bit moduli.
+ *
  * @param[in]  q     Prime modulus.
  * @param[out] g_ptr Set to a primitive root of q on success.
  *
  * @return true on success.
- * @return false if q is not valid (e.g., q < 3) or no root was found.
+ * @return false if q is not valid (e.g., q < 3), the factorization of q-1
+ *         cannot be obtained, or no root was found.
  */
-static bool ntt__find_primitive_root(uint32_t q, uint32_t *g_ptr)
+static bool ntt__find_primitive_root(uint64_t q, uint64_t *g_ptr)
 {
     if (q < 3 || g_ptr == NULL) {
         return false;
     }
 
-    uint32_t phi = q - 1;
+    uint64_t phi = q - 1;
     uint32_t factors[32];
     size_t n_factors = 0;
 
-    if (!ntt__known_modulus_factors_lookup(q, factors, 32, &n_factors) &&
-        !ntt__distinct_prime_factors(q, factors, 32, &n_factors)) {
-        NTT_LOG(NTT_LOG_ERROR,
-                "Too many distinct prime factors of q-1=%u",
-                phi);
-        return false;
+    if (!ntt__known_modulus_factors_lookup(q, factors, 32, &n_factors)) {
+        if (q >= (1ull << 32) ||
+            !ntt__distinct_prime_factors(q - 1, factors, 32, &n_factors)) {
+            NTT_LOG(NTT_LOG_ERROR,
+                    "Cannot factor q-1=%llu for modulus q=%llu",
+                    (unsigned long long)phi,
+                    (unsigned long long)q);
+            return false;
+        }
     }
 
-    for (uint32_t g = 2; g < q; g++) {
+    for (uint64_t g = 2; g < q; g++) {
         bool ok = true;
         for (size_t i = 0; i < n_factors; i++) {
             if (modpow(g, phi / factors[i], q) == 1) {
@@ -233,7 +319,7 @@ static bool ntt__find_primitive_root(uint32_t q, uint32_t *g_ptr)
  * @return true if a modular square root exists and is stored in out.
  * @return false if a is not a quadratic residue modulo q.
  */
-static bool ntt__sqrt_mod(uint32_t a, uint32_t q, uint32_t *out)
+static bool ntt__sqrt_mod(uint64_t a, uint64_t q, uint64_t *out)
 {
     /* Reduce a to its canonical representative modulo q. */
     a %= q;
@@ -280,8 +366,8 @@ static bool ntt__sqrt_mod(uint32_t a, uint32_t q, uint32_t *out)
      *
      * where Q is odd.
      */
-    uint32_t Q = q - 1;
-    uint32_t S = 0;
+    uint64_t Q = q - 1;
+    uint64_t S = 0;
 
     /* Remove all factors of two from q - 1. */
     while ((Q & 1u) == 0) {
@@ -296,9 +382,12 @@ static bool ntt__sqrt_mod(uint32_t a, uint32_t q, uint32_t *out)
      *
      * Euler's criterion is used to identify such a value.
      */
-    uint32_t z = 2;
-    while (modpow(z, (q - 1) / 2, q) != q - 1) {
+    uint64_t z = 2;
+    while (z < q && modpow(z, (q - 1) / 2, q) != q - 1) {
         z++;
+    }
+    if (z == q) {
+        return false;
     }
 
     /*
@@ -318,10 +407,10 @@ static bool ntt__sqrt_mod(uint32_t a, uint32_t q, uint32_t *out)
      *
      * Therefore, once t becomes 1, R is a square root of a.
      */
-    uint32_t M = S;
-    uint32_t c = modpow(z, Q, q);
-    uint32_t t = modpow(a, Q, q);
-    uint32_t R = modpow(a, (Q + 1) / 2, q);
+    uint64_t M = S;
+    uint64_t c = modpow(z, Q, q);
+    uint64_t t = modpow(a, Q, q);
+    uint64_t R = modpow(a, (Q + 1) / 2, q);
 
     /*
      * Repeatedly correct R until t becomes 1.
@@ -335,8 +424,8 @@ static bool ntt__sqrt_mod(uint32_t a, uint32_t q, uint32_t *out)
      *     R^2 == a (mod q)
      */
     while (t != 1) {
-        uint32_t i = 0;
-        uint32_t tt = t;
+        uint64_t i = 0;
+        uint64_t tt = t;
 
         /*
          * Find the smallest i such that:
@@ -369,8 +458,8 @@ static bool ntt__sqrt_mod(uint32_t a, uint32_t q, uint32_t *out)
          *
          *     c, c^2, c^4, c^8, ...
          */
-        uint32_t b = c;
-        for (uint32_t e = 0; e < M - i - 1; e++) {
+        uint64_t b = c;
+        for (uint64_t e = 0; e < M - i - 1; e++) {
             b = mulmod(b, b, q);
         }
 
@@ -415,7 +504,7 @@ static bool ntt__sqrt_mod(uint32_t a, uint32_t q, uint32_t *out)
  *         modulo q.
  * @return false otherwise.
  */
-bool ntt__is_primitive_root_of_order(uint32_t x, uint32_t order, uint32_t q)
+bool ntt__is_primitive_root_of_order(uint64_t x, uint32_t order, uint64_t q)
 {
     if (order == 0 || x == 0) {
         return false;
@@ -438,11 +527,11 @@ bool ntt__is_primitive_root_of_order(uint32_t x, uint32_t order, uint32_t q)
     return modpow(x, order / 2, q) != 1;
 }
 
-bool ntt__resolve_roots(uint32_t q,
+bool ntt__resolve_roots(uint64_t q,
                         uint32_t n,
                         ntt_transform_type type,
-                        uint32_t *omega,
-                        uint32_t *psi)
+                        uint64_t *omega,
+                        uint64_t *psi)
 {
     if (omega == NULL || psi == NULL || n == 0) {
         NTT_LOG(NTT_LOG_ERROR, "Invalid arguments");
@@ -460,20 +549,22 @@ bool ntt__resolve_roots(uint32_t q,
         }
         if (have_omega) {
             if (!ntt__is_primitive_root_of_order(*omega, n, q)) {
-                NTT_LOG(
-                    NTT_LOG_ERROR,
-                    "omega=%u is not a primitive %u-th root of unity mod %u",
-                    *omega,
-                    n,
-                    q);
+                NTT_LOG(NTT_LOG_ERROR,
+                        "omega=%llu is not a primitive %u-th root of unity mod "
+                        "%llu",
+                        (unsigned long long)*omega,
+                        n,
+                        (unsigned long long)q);
                 return false;
             }
             return true;
         }
 
-        uint32_t g;
+        uint64_t g;
         if (!ntt__find_primitive_root(q, &g)) {
-            NTT_LOG(NTT_LOG_ERROR, "no primitive root found for q=%u", q);
+            NTT_LOG(NTT_LOG_ERROR,
+                    "no primitive root found for q=%llu",
+                    (unsigned long long)q);
             return false;
         }
         *omega = modpow(g, (q - 1) / n, q);
@@ -488,10 +579,10 @@ bool ntt__resolve_roots(uint32_t q,
         }
         if (!ntt__is_primitive_root_of_order(*psi, 2 * n, q)) {
             NTT_LOG(NTT_LOG_ERROR,
-                    "psi=%u is not a primitive %u-th root of unity mod %u",
-                    *psi,
+                    "psi=%llu is not a primitive %u-th root of unity mod %llu",
+                    (unsigned long long)*psi,
                     2 * n,
-                    q);
+                    (unsigned long long)q);
             return false;
         }
         return true;
@@ -500,10 +591,10 @@ bool ntt__resolve_roots(uint32_t q,
     if (have_psi) {
         if (!ntt__is_primitive_root_of_order(*psi, 2 * n, q)) {
             NTT_LOG(NTT_LOG_ERROR,
-                    "psi=%u is not a primitive %u-th root of unity mod %u",
-                    *psi,
+                    "psi=%llu is not a primitive %u-th root of unity mod %llu",
+                    (unsigned long long)*psi,
                     2 * n,
-                    q);
+                    (unsigned long long)q);
             return false;
         }
         *omega = mulmod(*psi, *psi, q);
@@ -512,19 +603,20 @@ bool ntt__resolve_roots(uint32_t q,
 
     if (have_omega) {
         if (!ntt__is_primitive_root_of_order(*omega, n, q)) {
-            NTT_LOG(NTT_LOG_ERROR,
-                    "omega=%u is not a primitive %u-th root of unity mod %u",
-                    *omega,
-                    n,
-                    q);
+            NTT_LOG(
+                NTT_LOG_ERROR,
+                "omega=%llu is not a primitive %u-th root of unity mod %llu",
+                (unsigned long long)*omega,
+                n,
+                (unsigned long long)q);
             return false;
         }
-        uint32_t s;
+        uint64_t s;
         if (!ntt__sqrt_mod(*omega, q, &s)) {
             NTT_LOG(NTT_LOG_ERROR,
-                    "omega has no square root mod %u: modulus does not "
+                    "omega has no square root mod %llu: modulus does not "
                     "support a negacyclic transform of size %u",
-                    q,
+                    (unsigned long long)q,
                     n);
             return false;
         }
@@ -533,12 +625,14 @@ bool ntt__resolve_roots(uint32_t q,
     }
 
     /* Neither given: derive both from scratch. */
-    uint32_t g;
+    uint64_t g;
     if (!ntt__find_primitive_root(q, &g)) {
-        NTT_LOG(NTT_LOG_ERROR, "no primitive root found for q=%u", q);
+        NTT_LOG(NTT_LOG_ERROR,
+                "no primitive root found for q=%llu",
+                (unsigned long long)q);
         return false;
     }
-    *psi = modpow(g, (q - 1) / (2 * n), q);
+    *psi = modpow(g, (q - 1) / (2ull * n), q);
     *omega = mulmod(*psi, *psi, q);
     return true;
 }
@@ -563,20 +657,18 @@ bool ntt__resolve_roots(uint32_t q,
  * @return true if the generic NTT domain requirements are satisfied.
  * @return false otherwise.
  */
-bool ntt__validate_transform_params(uint32_t q,
+bool ntt__validate_transform_params(uint64_t q,
                                     uint32_t n,
                                     ntt_transform_type type)
 {
-
+    uint64_t order;
     if (q <= 2 || n == 0 || !ntt_is_power_of_two(n)) {
         NTT_LOG(NTT_LOG_ERROR,
-                "Invalid NTT transform parameters: q=%u n=%u",
-                q,
+                "Invalid NTT transform parameters: q=%llu n=%u",
+                (unsigned long long)q,
                 n);
         return false;
     }
-
-    uint64_t order;
 
     switch (type) {
     case NTT_TRANSFORM_CYCLIC:
@@ -590,11 +682,11 @@ bool ntt__validate_transform_params(uint32_t q,
         return false;
     }
 
-    if (((uint64_t)(q - 1)) % order != 0) {
+    if ((q - 1) % order != 0) {
         NTT_LOG(NTT_LOG_ERROR,
-                "required root order=%llu does not divide q-1=%u",
+                "required root order=%llu does not divide q-1=%llu",
                 (unsigned long long)order,
-                q - 1);
+                (unsigned long long)(q - 1));
         return false;
     }
 
@@ -618,12 +710,21 @@ uint32_t ntt_reverse_bits(uint32_t x, uint32_t bits)
     return r;
 }
 
-bool ntt_is_prime(uint32_t q)
+bool ntt_is_prime(uint64_t q)
 {
-    static const uint32_t witnesses[] = {2u, 7u, 61u};
+    /*
+     * Deterministic Miller-Rabin for the complete uint64_t domain. The
+     * witness set {2, 325, 9375, 28178, 450775, 9780504, 1795265022} is
+     * proven sufficient for every integer smaller than
+     * 3,317,044,064,679,887,385,961,981, which is far beyond 2^64.
+     */
+    static const uint64_t witnesses[] =
+        {2u, 325u, 9375u, 28178u, 450775u, 9780504u, 1795265022u};
 
     if (q < 2u) {
-        NTT_LOG(NTT_LOG_ERROR, "Primality test failed: q=%u is less than 2", q);
+        NTT_LOG(NTT_LOG_ERROR,
+                "Primality test failed: q=%llu is less than 2",
+                (unsigned long long)q);
         return false;
     }
 
@@ -632,15 +733,17 @@ bool ntt_is_prime(uint32_t q)
     }
 
     if ((q & 1u) == 0u) {
-        NTT_LOG(NTT_LOG_ERROR, "Primality test failed: q=%u is even", q);
+        NTT_LOG(NTT_LOG_ERROR,
+                "Primality test failed: q=%llu is even",
+                (unsigned long long)q);
         return false;
     }
 
     /*
      * Decompose q - 1 as d * 2^s, where d is odd.
      */
-    uint32_t d = q - 1u;
-    uint32_t s = 0u;
+    uint64_t d = q - 1u;
+    uint64_t s = 0u;
 
     while ((d & 1u) == 0u) {
         d >>= 1;
@@ -648,7 +751,7 @@ bool ntt_is_prime(uint32_t q)
     }
 
     for (size_t i = 0; i < sizeof(witnesses) / sizeof(witnesses[0]); i++) {
-        uint32_t a = witnesses[i];
+        uint64_t a = witnesses[i];
 
         /*
          * A witness greater than or equal to q is not meaningful for this
@@ -658,7 +761,7 @@ bool ntt_is_prime(uint32_t q)
             continue;
         }
 
-        uint32_t x = modpow(a, d, q);
+        uint64_t x = modpow(a, d, q);
 
         if (x == 1u || x == q - 1u) {
             continue;
@@ -666,7 +769,7 @@ bool ntt_is_prime(uint32_t q)
 
         bool witness_passed = false;
 
-        for (uint32_t r = 1u; r < s; r++) {
+        for (uint64_t r = 1u; r < s; r++) {
             x = mulmod(x, x, q);
 
             if (x == q - 1u) {
@@ -677,10 +780,10 @@ bool ntt_is_prime(uint32_t q)
 
         if (!witness_passed) {
             NTT_LOG(NTT_LOG_ERROR,
-                    "Primality test failed: q=%u is composite "
-                    "(Miller-Rabin witness=%u)",
-                    q,
-                    a);
+                    "Primality test failed: q=%llu is composite "
+                    "(Miller-Rabin witness=%llu)",
+                    (unsigned long long)q,
+                    (unsigned long long)a);
             return false;
         }
     }

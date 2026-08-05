@@ -53,7 +53,7 @@ int ntt_config_set_transform_type(ntt_config *config, ntt_transform_type type)
     return NTT_OK;
 }
 
-int ntt_config_set_modulus(ntt_config *config, uint32_t q)
+int ntt_config_set_modulus(ntt_config *config, uint64_t q)
 {
     if (config == NULL) {
         NTT_LOG(NTT_LOG_DEBUG, "Invalid argument");
@@ -73,7 +73,7 @@ int ntt_config_set_size(ntt_config *config, uint32_t n)
     return NTT_OK;
 }
 
-int ntt_config_set_omega(ntt_config *config, uint32_t omega)
+int ntt_config_set_omega(ntt_config *config, uint64_t omega)
 {
     if (config == NULL) {
         NTT_LOG(NTT_LOG_DEBUG, "Invalid argument");
@@ -83,7 +83,7 @@ int ntt_config_set_omega(ntt_config *config, uint32_t omega)
     return NTT_OK;
 }
 
-int ntt_config_set_psi(ntt_config *config, uint32_t psi)
+int ntt_config_set_psi(ntt_config *config, uint64_t psi)
 {
     if (config == NULL) {
         NTT_LOG(NTT_LOG_DEBUG, "Invalid argument");
@@ -114,7 +114,7 @@ ntt_transform_type ntt_config_get_transform_type(const ntt_config *config)
     return config->transform_type;
 }
 
-uint32_t ntt_config_get_modulus(const ntt_config *config)
+uint64_t ntt_config_get_modulus(const ntt_config *config)
 {
     if (config == NULL) {
         NTT_LOG(NTT_LOG_DEBUG, "Invalid argument");
@@ -132,7 +132,7 @@ uint32_t ntt_config_get_size(const ntt_config *config)
     return config->n;
 }
 
-uint32_t ntt_config_get_omega(const ntt_config *config)
+uint64_t ntt_config_get_omega(const ntt_config *config)
 {
     if (config == NULL) {
         NTT_LOG(NTT_LOG_DEBUG, "Invalid argument");
@@ -141,7 +141,7 @@ uint32_t ntt_config_get_omega(const ntt_config *config)
     return config->omega;
 }
 
-uint32_t ntt_config_get_psi(const ntt_config *config)
+uint64_t ntt_config_get_psi(const ntt_config *config)
 {
     if (config == NULL) {
         NTT_LOG(NTT_LOG_DEBUG, "Invalid argument");

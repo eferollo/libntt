@@ -80,7 +80,7 @@ typedef void (*ntt_adapter_teardown_fn)(void *state);
  * @return NTT_OK on success.
  * @return NTT_ERROR on failure.
  */
-typedef int (*ntt_adapter_forward_fn)(void *state, uint32_t *a);
+typedef int (*ntt_adapter_forward_fn)(void *state, uint64_t *a);
 
 /**
  * @brief Computes an inverse NTT using Adapter-specific state.
@@ -93,7 +93,7 @@ typedef int (*ntt_adapter_forward_fn)(void *state, uint32_t *a);
  * @return NTT_OK on success.
  * @return NTT_ERROR on failure.
  */
-typedef int (*ntt_adapter_inverse_fn)(void *state, uint32_t *a);
+typedef int (*ntt_adapter_inverse_fn)(void *state, uint64_t *a);
 
 /**
  * @brief Multiplies two polynomials using the Adapter-specific negacyclic NTT.
@@ -115,9 +115,9 @@ typedef int (*ntt_adapter_inverse_fn)(void *state, uint32_t *a);
  * @return NTT_ERROR on failure.
  */
 typedef int (*ntt_adapter_negacyclic_mul_fn)(void *state,
-                                             uint32_t *a,
-                                             uint32_t *b,
-                                             uint32_t *c);
+                                             uint64_t *a,
+                                             uint64_t *b,
+                                             uint64_t *c);
 
 /**
  * @brief Describes an NTT Adapter implementation.

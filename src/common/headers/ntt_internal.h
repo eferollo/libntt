@@ -36,20 +36,20 @@
  * pointer.
  */
 struct ntt_ctx_s {
-    uint32_t q;                 /* prime modulus */
+    uint64_t q;                 /* prime modulus */
     uint32_t n;                 /* transform size, must be a power of 2 */
     const ntt_adapter *adapter; /* selected NTT adapter */
     void *state;                /* opaque backend-specific state */
 };
 
-bool ntt__validate_transform_params(uint32_t q,
+bool ntt__validate_transform_params(uint64_t q,
                                     uint32_t n,
                                     ntt_transform_type type);
-bool ntt__resolve_roots(uint32_t q,
+bool ntt__resolve_roots(uint64_t q,
                         uint32_t n,
                         ntt_transform_type type,
-                        uint32_t *omega,
-                        uint32_t *psi);
+                        uint64_t *omega,
+                        uint64_t *psi);
 
 #define SAFE_FREE(ptr)       \
     do {                     \

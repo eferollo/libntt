@@ -82,9 +82,9 @@ void ntt_destroy(ntt_ctx *ctx);
  * @return NTT_OK Multiplication completed successfully.
  * @return NTT_ERROR on errors.
  */
-int ntt_negacyclic_mul(uint32_t *a,
-                       uint32_t *b,
-                       uint32_t *c,
+int ntt_negacyclic_mul(uint64_t *a,
+                       uint64_t *b,
+                       uint64_t *c,
                        const ntt_ctx *ctx);
 
 /**
@@ -100,7 +100,7 @@ int ntt_negacyclic_mul(uint32_t *a,
  * @return NTT_OK  Transform completed successfully.
  * @return NTT_ERROR Invalid input.
  */
-int ntt_forward(const ntt_ctx *ctx, uint32_t *a);
+int ntt_forward(const ntt_ctx *ctx, uint64_t *a);
 
 /**
  * @brief Computes the inverse Number Theoretic Transform (INTT).
@@ -116,7 +116,7 @@ int ntt_forward(const ntt_ctx *ctx, uint32_t *a);
  * @return NTT_OK Transform completed successfully.
  * @return NTT_ERROR Invalid input.
  */
-int ntt_inverse(const ntt_ctx *ctx, uint32_t *a);
+int ntt_inverse(const ntt_ctx *ctx, uint64_t *a);
 
 #ifdef __cplusplus
 }

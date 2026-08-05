@@ -104,7 +104,7 @@ int ntt_config_set_transform_type(ntt_config *config, ntt_transform_type type);
  * @return NTT_OK on success.
  * @return NTT_ERROR on invalid input.
  */
-int ntt_config_set_modulus(ntt_config *config, uint32_t q);
+int ntt_config_set_modulus(ntt_config *config, uint64_t q);
 
 /**
  * @brief Sets the NTT transform size.
@@ -126,7 +126,7 @@ int ntt_config_set_size(ntt_config *config, uint32_t n);
  * @return NTT_OK on success.
  * @return NTT_ERROR on invalid input.
  */
-int ntt_config_set_omega(ntt_config *config, uint32_t omega);
+int ntt_config_set_omega(ntt_config *config, uint64_t omega);
 
 /**
  * @brief Sets the primitive 2n-th root of unity.
@@ -137,7 +137,7 @@ int ntt_config_set_omega(ntt_config *config, uint32_t omega);
  * @return NTT_OK on success.
  * @return NTT_ERROR on invalid input.
  */
-int ntt_config_set_psi(ntt_config *config, uint32_t psi);
+int ntt_config_set_psi(ntt_config *config, uint64_t psi);
 
 /**
  * @brief Sets configuration flags.
@@ -168,7 +168,7 @@ ntt_transform_type ntt_config_get_transform_type(const ntt_config *config);
  *
  * @return Prime modulus q.
  */
-uint32_t ntt_config_get_modulus(const ntt_config *config);
+uint64_t ntt_config_get_modulus(const ntt_config *config);
 
 /**
  * @brief Returns the NTT transform size.
@@ -186,7 +186,7 @@ uint32_t ntt_config_get_size(const ntt_config *config);
  *
  * @return Primitive n-th root of unity omega.
  */
-uint32_t ntt_config_get_omega(const ntt_config *config);
+uint64_t ntt_config_get_omega(const ntt_config *config);
 
 /**
  * @brief Returns the primitive 2n-th root of unity.
@@ -195,7 +195,7 @@ uint32_t ntt_config_get_omega(const ntt_config *config);
  *
  * @return Primitive 2n-th root of unity psi.
  */
-uint32_t ntt_config_get_psi(const ntt_config *config);
+uint64_t ntt_config_get_psi(const ntt_config *config);
 
 /**
  * @brief Returns the configuration flags.
