@@ -1,58 +1,47 @@
 # cmocka is required by the unit-test binaries.
 find_package(cmocka REQUIRED)
 
-# Unlike examples, tests are allowed to access the library's private
-# implementation headers. This allows tests to inspect and validate internal
+# Unlike examples, unit tests are allowed to access the library's private
+# implementation headers. This allows them to inspect and validate internal
 # structures and backend-specific functionality that is intentionally hidden
 # from normal library users.
-add_executable(torture_ntt
-    torture_ntt.c
-)
-
-# Link the test against the NTT library and OpenSSL.
-target_link_libraries(torture_ntt
-    PRIVATE
-        ntt::ntt
-        OpenSSL::Crypto
-)
-
-# Allow the test to include both the public API headers and private internal
-# headers.
 #
-# The public headers are exposed through the ntt::ntt target itself, while
-# the internal headers are explicitly added here and are therefore visible
-# only to this test target.
-target_include_directories(torture_ntt
-    PRIVATE
-        ${PROJECT_SOURCE_DIR}/src/common/headers
-)
+# ntt_cmocka_unit(<name> <source> [<extra_includes>...])
+#   Builds a cmocka unit-test binary that:
+#     - links ntt::ntt, cmocka::cmocka and OpenSSL::Crypto;
+#     - gets the shared internal headers dir;
+#     - registers itself with CTest under <name>.
+function(ntt_cmocka_unit name source)
+    add_executable(${name}
+        ${source}
+    )
 
-# Register the torture test with CTest.
-add_test(
-    NAME torture_ntt
-    COMMAND torture_ntt
-)
+    target_link_libraries(${name}
+        PRIVATE
+            ntt::ntt
+            cmocka::cmocka
+            OpenSSL::Crypto
+    )
 
-# Unit tests
-add_executable(torture_scalar_barrett
+    target_include_directories(${name}
+        PRIVATE
+            ${PROJECT_SOURCE_DIR}/src/common/headers
+            ${PROJECT_SOURCE_DIR}/tests/common
+            ${ARGN}
+    )
+
+    add_test(
+        NAME ${name}
+        COMMAND ${name}
+    )
+endfunction()
+
+ntt_cmocka_unit(torture_scalar_barrett
     unittests/torture_scalar_barrett.c
+    ${PROJECT_SOURCE_DIR}/src/adapters/scalar/redc
 )
 
-target_link_libraries(torture_scalar_barrett
-    PRIVATE
-        ntt::ntt
-        cmocka::cmocka
-        OpenSSL::Crypto
-)
-
-target_include_directories(torture_scalar_barrett
-    PRIVATE
-        ${PROJECT_SOURCE_DIR}/src/common/headers
-        ${PROJECT_SOURCE_DIR}/src/adapters/scalar/redc
-)
-
-# Register the Barrett unit tests with CTest.
-add_test(
-    NAME torture_scalar_barrett
-    COMMAND torture_scalar_barrett
+ntt_cmocka_unit(torture_scalar_montgomery
+    unittests/torture_scalar_montgomery.c
+    ${PROJECT_SOURCE_DIR}/src/adapters/scalar/redc
 )

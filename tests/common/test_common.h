@@ -22,6 +22,7 @@
 
 #include "ntt/ntt_log.h"
 
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -54,6 +55,31 @@ static inline void ntt_test_set_log_level(void)
             ntt_log_set_level(NTT_LOG_DEBUG);
         }
     }
+}
+
+/*
+ * Splitmix64 deterministic PRNG shared by the differential tests. Each test
+ * binary owns its seed as a per-file uint64_t state so it can reseed from the
+ * CSPRNG in stress mode; these helpers only advance and draw from that state.
+ */
+static inline uint64_t ntt_test_prng_next_u64(uint64_t *state)
+{
+    uint64_t z = (*state += UINT64_C(0x9E3779B97F4A7C15));
+    z = (z ^ (z >> 30)) * UINT64_C(0xBF58476D1CE4E5B9);
+    z = (z ^ (z >> 27)) * UINT64_C(0x94D049BB133111EB);
+    return z ^ (z >> 31);
+}
+
+/** @brief Returns a value strictly smaller than @p bound. */
+static inline uint64_t ntt_test_prng_range(uint64_t *state, uint64_t bound)
+{
+    return ntt_test_prng_next_u64(state) % bound;
+}
+
+/** @brief Returns the low 32 bits of a PRNG value. */
+static inline uint32_t ntt_test_prng_next_u32(uint64_t *state)
+{
+    return (uint32_t)ntt_test_prng_next_u64(state);
 }
 
 #ifdef __cplusplus
