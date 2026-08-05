@@ -26,13 +26,12 @@
  *        library may actually be used with in practice (e.g., Kyber,
  *        Dilithium, Goldilocks).
  *
- * Trial division on q-1 is O(sqrt(q)), which is fine if not executed in a hot
- * path, but pointless to redo on every ntt_create() call for a modulus whose
- * factorization is public and fixed. For moduli larger than 32 bits, trial
- * division is no longer feasible and the factorization table is the only
- * supported way to auto-derive primitive roots. Anything not listed here
- * falls back to ntt__distinct_prime_factors(), which is restricted to
- * 32-bit moduli so arbitrary user-supplied 32-bit moduli still work.
+ * Looking up the factorization is a cheap fast path for moduli whose
+ * factorization is public and fixed, avoiding a re-run of the generic
+ * factorizer on every ntt_create() call. Anything not listed here falls back
+ * to ntt__distinct_prime_factors(), which uses trial division for small
+ * factors plus Pollard's rho for the cofactor and therefore supports the
+ * complete uint64_t domain.
  */
 typedef struct {
     uint64_t q;
@@ -149,71 +148,252 @@ static uint64_t modpow(uint64_t base, uint64_t exp, uint64_t q)
 }
 
 /**
- * @brief Finds the distinct prime factors of x via trial division.
+ * @brief Deterministic Miller-Rabin primality test for the complete
+ *        uint64_t domain.
  *
- * Trial division up to sqrt(x) is sufficient here: x is always q-1 for a
- * 32-bit prime q, so x fits comfortably in 32 bits and this runs once per
- * ntt_create(), not in any hot path. For 64-bit moduli this function is not
- * invoked; the known-moduli table is used instead.
+ * The fixed witness set {2, 325, 9375, 28178, 450775, 9780504, 1795265022}
+ * is sufficient for every integer smaller than
+ * 3,317,044,064,679,887,385,961,981, which is far beyond 2^64. This is the
+ * silent core used by the public ntt_is_prime(); it never logs, so
+ * factorization may use it to probe many composite cofactors without spamming
+ * the log.
  *
- * @param[in]  x           The positive integer to factorize (must be < 2^32).
+ * @param[in]  q               Integer to test for primality.
+ * @param[out] failing_witness If non-NULL and the test fails, receives the
+ *                             witness that proved compositeness.
+ *
+ * @return true if @p q is prime, false if it is composite or less than two.
+ */
+static bool ntt__miller_rabin(uint64_t q, uint64_t *failing_witness)
+{
+    static const uint64_t witnesses[] =
+        {2u, 325u, 9375u, 28178u, 450775u, 9780504u, 1795265022u};
+
+    if (q < 2u) {
+        return false;
+    }
+
+    if (q == 2u || q == 3u) {
+        return true;
+    }
+
+    if ((q & 1u) == 0u) {
+        return false;
+    }
+
+    /*
+     * Decompose q - 1 as d * 2^s, where d is odd.
+     */
+    uint64_t d = q - 1u;
+    uint64_t s = 0u;
+
+    while ((d & 1u) == 0u) {
+        d >>= 1;
+        s++;
+    }
+
+    for (size_t i = 0; i < sizeof(witnesses) / sizeof(witnesses[0]); i++) {
+        uint64_t a = witnesses[i];
+
+        /*
+         * A witness greater than or equal to q is not meaningful for this
+         * candidate. This also handles small prime candidates.
+         */
+        if (a >= q) {
+            continue;
+        }
+
+        uint64_t x = modpow(a, d, q);
+
+        if (x == 1u || x == q - 1u) {
+            continue;
+        }
+
+        bool witness_passed = false;
+
+        for (uint64_t r = 1u; r < s; r++) {
+            x = mulmod(x, x, q);
+
+            if (x == q - 1u) {
+                witness_passed = true;
+                break;
+            }
+        }
+
+        if (!witness_passed) {
+            if (failing_witness != NULL) {
+                *failing_witness = a;
+            }
+            return false;
+        }
+    }
+
+    return true;
+}
+
+/**
+ * @brief Computes the greatest common divisor of two 64-bit integers.
+ *
+ * Standard Euclidean algorithm. Used by Pollard's rho to detect, via
+ * gcd(diff, n), a prime factor that divides the difference between two rho
+ * sequence values.
+ */
+static uint64_t ntt__gcd_u64(uint64_t a, uint64_t b)
+{
+    while (b != 0) {
+        uint64_t t = a % b;
+        a = b;
+        b = t;
+    }
+    return a;
+}
+
+/**
+ * @brief Finds a non-trivial factor of a composite using Pollard's rho.
+ *
+ * Uses the Floyd cycle-finding variant with f(x) = x^2 + c (mod n). When x
+ * and y collide modulo a prime factor p of n, the difference
+ * gcd(|x - y|, n) yields that prime factor. This runs once per ntt_create(),
+ * never in a hot path, so the simple shift-and-add mulmod is sufficient.
+ *
+ * @param n Odd composite integer below 2^64.
+ *
+ * @return A non-trivial factor of @p n, or 0 if the heuristic fails
+ *         (effective never for the 64-bit domain).
+ */
+static uint64_t ntt__pollard_rho(uint64_t n)
+{
+    if ((n & 1u) == 0u) {
+        return 2;
+    }
+
+    for (uint64_t c = 1; c < n && c <= 256; c++) {
+        uint64_t x = 2;
+        uint64_t y = 2;
+        uint64_t d = 1;
+
+        while (d == 1) {
+            x = addmod_u64(mulmod(x, x, n), c, n);
+            y = addmod_u64(mulmod(y, y, n), c, n);
+            y = addmod_u64(mulmod(y, y, n), c, n);
+
+            uint64_t diff = (x > y) ? x - y : y - x;
+            d = ntt__gcd_u64(diff, n);
+        }
+
+        if (d != n) {
+            return d;
+        }
+    }
+
+    return 0;
+}
+
+/**
+ * @brief Finds the distinct prime factors of x via trial division for small
+ *        factors and Pollard's rho for the cofactor.
+ *
+ * Works for the complete uint64_t domain, unlike a pure trial-division
+ * approach which is only feasible for 32-bit inputs. Small factors are
+ * stripped by trial division. Any remaining composite cofactor is split
+ * recursively by Pollard's rho, and primality of each factor is decided with
+ * the deterministic Miller-Rabin test.
+ *
+ * @param[in]  x           The positive integer to factorize.
  * @param[out] factors     Array where the distinct prime factors are stored.
  * @param[in]  max_factors Maximum number of factors that can be stored in
  *                         factors array.
  * @param[out] count       Stores the number of distinct prime factors found.
  *
  * @return true if all distinct prime factors fit in the provided array.
- * @return false if max_factors is too small.
+ * @return false if max_factors is too small or factorization failed.
  */
-static bool ntt__distinct_prime_factors(uint64_t x,
-                                        uint32_t *factors,
-                                        size_t max_factors,
-                                        size_t *count)
+bool ntt__distinct_prime_factors(uint64_t x,
+                                 uint64_t *factors,
+                                 size_t max_factors,
+                                 size_t *count)
 {
+    if (x <= 1) {
+        return false;
+    }
+
     size_t cnt = 0;
 
-    /* Try every possible divisor p up to sqrt(x). */
-    for (uint64_t p = 2; p * p <= x; p++) {
-        /* If p does not divide x, it cannot be a prime factor. */
-        if (x % p != 0) {
-            continue;
-        }
-
+    /*
+     * Strip the factor 2 entirely: every remaining cofactor is odd, so
+     * Pollard's rho never sees an even input.
+     */
+    if ((x & 1u) == 0u) {
         if (cnt >= max_factors) {
             return false;
         }
-
-        /* Store p only once, since only distinct prime factors are needed. */
-        factors[cnt++] = (uint32_t)p;
-
-        /*
-         * Remove every occurrence of p from x.
-         * This ensures that p is not stored again and reduces x for
-         * subsequent factorization steps.
-         */
-        while (x % p == 0) {
-            x /= p;
+        factors[cnt++] = 2;
+        do {
+            x >>= 1;
+        } while ((x & 1u) == 0u);
+        if (x == 1) {
+            *count = cnt;
+            return true;
         }
     }
 
-    /*
-     * If x is still greater than 1, the remaining value must be a prime
-     * factor. This happens when the remaining prime factor is greater than
-     * sqrt(x) at the point where the loop terminates.
-     */
-    if (x > 1) {
-        if (cnt >= max_factors) {
+    uint64_t stack[32];
+    size_t depth = 0;
+    stack[depth++] = x;
+
+    while (depth > 0) {
+        uint64_t n = stack[--depth];
+
+        if (ntt__miller_rabin(n, NULL)) {
+            bool seen = false;
+            for (size_t i = 0; i < cnt; i++) {
+                if (factors[i] == n) {
+                    seen = true;
+                    break;
+                }
+            }
+            if (!seen) {
+                if (cnt >= max_factors) {
+                    return false;
+                }
+                factors[cnt++] = n;
+            }
+            continue;
+        }
+
+        uint64_t d = ntt__pollard_rho(n);
+        if (d == 0 || d == 1 || d == n) {
             return false;
         }
-        factors[cnt++] = (uint32_t)x;
+        stack[depth++] = d;
+        stack[depth++] = n / d;
     }
 
     *count = cnt;
     return true;
 }
 
+/**
+ * @brief Looks up the distinct prime factors of q-1 in the known-moduli
+ *        table.
+ *
+ * Serves as the fast path for the factorization of q-1: for moduli whose
+ * factorization is public and fixed (e.g., Kyber, Dilithium, Goldilocks),
+ * this avoids re-running the generic factorizer on every ntt_create() call.
+ * Moduli not present in the table are not an error; the caller falls back to
+ * ntt__distinct_prime_factors().
+ *
+ * @param[in]  q           Prime modulus to look up.
+ * @param[out] factors     Array receiving the distinct prime factors of q-1.
+ * @param[in]  max_factors Maximum number of factors that fit in @p factors.
+ * @param[out] count       Set to the number of factors written.
+ *
+ * @return true if @p q was found in the table.
+ * @return false if @p q is not listed, or if the table entry has more
+ *         factors than @p max_factors.
+ */
 static bool ntt__known_modulus_factors_lookup(uint64_t q,
-                                              uint32_t *factors,
+                                              uint64_t *factors,
                                               size_t max_factors,
                                               size_t *count)
 {
@@ -240,8 +420,8 @@ static bool ntt__known_modulus_factors_lookup(uint64_t q,
  *
  * The factorization of q-1 is required to test generator candidates. For
  * moduli listed in the known-moduli table the factorization is looked up;
- * otherwise it is computed by trial division, which is only feasible for
- * 32-bit moduli.
+ * otherwise it is computed by ntt__distinct_prime_factors(), which supports
+ * the complete 64-bit domain.
  *
  * @param[in]  q     Prime modulus.
  * @param[out] g_ptr Set to a primitive root of q on success.
@@ -257,12 +437,11 @@ static bool ntt__find_primitive_root(uint64_t q, uint64_t *g_ptr)
     }
 
     uint64_t phi = q - 1;
-    uint32_t factors[32];
+    uint64_t factors[32];
     size_t n_factors = 0;
 
     if (!ntt__known_modulus_factors_lookup(q, factors, 32, &n_factors)) {
-        if (q >= (1ull << 32) ||
-            !ntt__distinct_prime_factors(q - 1, factors, 32, &n_factors)) {
+        if (!ntt__distinct_prime_factors(q - 1, factors, 32, &n_factors)) {
             NTT_LOG(NTT_LOG_ERROR,
                     "Cannot factor q-1=%llu for modulus q=%llu",
                     (unsigned long long)phi,
@@ -527,6 +706,36 @@ bool ntt__is_primitive_root_of_order(uint64_t x, uint32_t order, uint64_t q)
     return modpow(x, order / 2, q) != 1;
 }
 
+/**
+ * @brief Resolves the NTT roots omega (primitive n-th root of unity) and psi
+ *        (primitive 2n-th root of unity) for a transform domain.
+ *
+ * A zero input value for omega or psi means "derive it". A non-zero input is
+ * taken as a user-supplied candidate that is validated. The rules are:
+ *
+ *   - For NTT_TRANSFORM_CYCLIC only omega applies; psi must be left zero.
+ *   - For NTT_TRANSFORM_NEGACYCLIC, if both are supplied, psi^2 must equal
+ *     omega and psi must be a primitive 2n-th root; otherwise the missing
+ *     root is derived from the supplied one (psi -> omega = psi^2, or
+ *     omega -> psi = sqrt(omega)), and if neither is supplied both are
+ *     derived from a primitive root of q.
+ *
+ * When a root must be derived, the factorization of q-1 is obtained via the
+ * known-moduli table or, failing that, the generic factorizer
+ * @see ntt__distinct_prime_factors().
+ *
+ * @param[in]      q     Prime modulus.
+ * @param[in]      n     Transform size, a power of two.
+ * @param[in]      type  Transform type.
+ * @param[in,out]  omega In: candidate omega, or 0 to derive. Out: primitive
+ *                       n-th root of unity.
+ * @param[in,out]  psi   In: candidate psi, or 0 to derive. Out: primitive
+ *                       2n-th root of unity.
+ *
+ * @return true on success, with omega and psi populated.
+ * @return false on invalid arguments or if the requested root order is not
+ *         achievable modulo q.
+ */
 bool ntt__resolve_roots(uint64_t q,
                         uint32_t n,
                         ntt_transform_type type,
@@ -712,81 +921,27 @@ uint32_t ntt_reverse_bits(uint32_t x, uint32_t bits)
 
 bool ntt_is_prime(uint64_t q)
 {
-    /*
-     * Deterministic Miller-Rabin for the complete uint64_t domain. The
-     * witness set {2, 325, 9375, 28178, 450775, 9780504, 1795265022} is
-     * proven sufficient for every integer smaller than
-     * 3,317,044,064,679,887,385,961,981, which is far beyond 2^64.
-     */
-    static const uint64_t witnesses[] =
-        {2u, 325u, 9375u, 28178u, 450775u, 9780504u, 1795265022u};
+    uint64_t witness = 0;
+
+    if (ntt__miller_rabin(q, &witness)) {
+        return true;
+    }
 
     if (q < 2u) {
         NTT_LOG(NTT_LOG_ERROR,
                 "Primality test failed: q=%llu is less than 2",
                 (unsigned long long)q);
-        return false;
-    }
-
-    if (q == 2u || q == 3u) {
-        return true;
-    }
-
-    if ((q & 1u) == 0u) {
+    } else if ((q & 1u) == 0u) {
         NTT_LOG(NTT_LOG_ERROR,
                 "Primality test failed: q=%llu is even",
                 (unsigned long long)q);
-        return false;
+    } else {
+        NTT_LOG(NTT_LOG_ERROR,
+                "Primality test failed: q=%llu is composite "
+                "(Miller-Rabin witness=%llu)",
+                (unsigned long long)q,
+                (unsigned long long)witness);
     }
 
-    /*
-     * Decompose q - 1 as d * 2^s, where d is odd.
-     */
-    uint64_t d = q - 1u;
-    uint64_t s = 0u;
-
-    while ((d & 1u) == 0u) {
-        d >>= 1;
-        s++;
-    }
-
-    for (size_t i = 0; i < sizeof(witnesses) / sizeof(witnesses[0]); i++) {
-        uint64_t a = witnesses[i];
-
-        /*
-         * A witness greater than or equal to q is not meaningful for this
-         * candidate. This also handles small prime candidates.
-         */
-        if (a >= q) {
-            continue;
-        }
-
-        uint64_t x = modpow(a, d, q);
-
-        if (x == 1u || x == q - 1u) {
-            continue;
-        }
-
-        bool witness_passed = false;
-
-        for (uint64_t r = 1u; r < s; r++) {
-            x = mulmod(x, x, q);
-
-            if (x == q - 1u) {
-                witness_passed = true;
-                break;
-            }
-        }
-
-        if (!witness_passed) {
-            NTT_LOG(NTT_LOG_ERROR,
-                    "Primality test failed: q=%llu is composite "
-                    "(Miller-Rabin witness=%llu)",
-                    (unsigned long long)q,
-                    (unsigned long long)a);
-            return false;
-        }
-    }
-
-    return true;
+    return false;
 }

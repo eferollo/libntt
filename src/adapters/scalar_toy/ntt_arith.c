@@ -33,7 +33,7 @@
  *
  * @return a reduced modulo the chosen modulus.
  */
-uint32_t ntt__reduce(uint32_t a, uint32_t q)
+uint64_t ntt__reduce(uint64_t a, uint64_t q)
 {
     return a % q;
 }
@@ -52,9 +52,9 @@ uint32_t ntt__reduce(uint32_t a, uint32_t q)
  *
  * @return (a + b) mod q.
  */
-uint32_t ntt__addmod(uint32_t a, uint32_t b, uint32_t q)
+uint64_t ntt__addmod(uint64_t a, uint64_t b, uint64_t q)
 {
-    uint32_t s = a + b;
+    uint64_t s = a + b;
     return (s >= q) ? s - q : s;
 }
 
@@ -73,7 +73,7 @@ uint32_t ntt__addmod(uint32_t a, uint32_t b, uint32_t q)
  *
  * @return (a - b) mod q.
  */
-uint32_t ntt__submod(uint32_t a, uint32_t b, uint32_t q)
+uint64_t ntt__submod(uint64_t a, uint64_t b, uint64_t q)
 {
     return (a >= b) ? (a - b) : (a + q - b);
 }
@@ -83,8 +83,11 @@ uint32_t ntt__submod(uint32_t a, uint32_t b, uint32_t q)
  *
  * Computes (a * b) mod q.
  *
- * A 64-bit intermediate value is used to prevent overflow of the product
- * before the modular reduction.
+ * A portable shift-and-add accumulation avoids any dependency on a
+ * compiler-provided 128-bit integer type, so this reference implementation
+ * works for moduli up to 2^63 (products would otherwise exceed 64 bits). The
+ * intermediate operations stay below 2^64 because every accumulated value is
+ * reduced modulo q after each addition.
  *
  * @param[in] a     First operand.
  * @param[in] b     Second operand.
@@ -92,9 +95,21 @@ uint32_t ntt__submod(uint32_t a, uint32_t b, uint32_t q)
  *
  * @return (a * b) mod q.
  */
-uint32_t ntt__mulmod(uint32_t a, uint32_t b, uint32_t q)
+uint64_t ntt__mulmod(uint64_t a, uint64_t b, uint64_t q)
 {
-    return (uint32_t)(((uint64_t)a * (uint64_t)b) % q);
+    a %= q;
+    b %= q;
+
+    uint64_t r = 0;
+    while (b != 0) {
+        if (b & 1u) {
+            r = (r + a) % q;
+        }
+        a = (a << 1) % q;
+        b >>= 1;
+    }
+
+    return r;
 }
 
 /**
@@ -116,9 +131,9 @@ uint32_t ntt__mulmod(uint32_t a, uint32_t b, uint32_t q)
  *
  * @return (base^exp mod q).
  */
-uint32_t ntt__modpow(uint32_t base, uint32_t exp, uint32_t q)
+uint64_t ntt__modpow(uint64_t base, uint64_t exp, uint64_t q)
 {
-    uint32_t result = 1;
+    uint64_t result = 1;
 
     base = ntt__reduce(base, q);
 
@@ -150,8 +165,7 @@ uint32_t ntt__modpow(uint32_t base, uint32_t exp, uint32_t q)
  * @warning The result is undefined if the passed modulus is not prime or if
  *          a is congruent to zero modulo q.
  */
-uint32_t ntt__modinv(uint32_t a, uint32_t q)
+uint64_t ntt__modinv(uint64_t a, uint64_t q)
 {
     return ntt__modpow(a, q - 2, q);
 }
-

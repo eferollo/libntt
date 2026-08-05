@@ -23,7 +23,8 @@
  * @brief Adds two backend-domain residues modulo the scalar context modulus.
  *
  * Addition is representation-preserving: canonical Barrett values remain
- * canonical and Montgomery-domain values remain in Montgomery form.
+ * canonical and Montgomery-domain values remain in Montgomery form. Both
+ * operands are smaller than @p q (<= 2^63), so the sum fits in a uint64_t.
  *
  * @param[in] a First residue in the current backend representation.
  * @param[in] b Second residue in the current backend representation.
@@ -31,10 +32,10 @@
  *
  * @return Backend-domain sum modulo @p q.
  */
-static uint32_t scalar_add(uint32_t a, uint32_t b, uint32_t q)
+static uint64_t scalar_add(uint64_t a, uint64_t b, uint64_t q)
 {
-    uint64_t sum = (uint64_t)a + b;
-    return sum >= q ? (uint32_t)(sum - q) : (uint32_t)sum;
+    uint64_t sum = a + b;
+    return sum >= q ? sum - q : sum;
 }
 
 /**
@@ -50,9 +51,9 @@ static uint32_t scalar_add(uint32_t a, uint32_t b, uint32_t q)
  *
  * @return Backend-domain difference modulo @p q.
  */
-static uint32_t scalar_sub(uint32_t a, uint32_t b, uint32_t q)
+static uint64_t scalar_sub(uint64_t a, uint64_t b, uint64_t q)
 {
-    return a >= b ? a - b : (uint32_t)((uint64_t)a + q - b);
+    return a >= b ? a - b : a + q - b;
 }
 
 /**
@@ -68,16 +69,29 @@ static uint32_t scalar_sub(uint32_t a, uint32_t b, uint32_t q)
  *
  * @return Canonical residue in @f$[0,q)@f$.
  */
-static uint32_t scalar_reduce(uint32_t a, const ntt_scalar_state *state)
+static uint64_t scalar_reduce(uint64_t a, const ntt_scalar_state *state)
 {
     if (state->reduction == NTT_SCALAR_REDUCTION_MONTGOMERY) {
-        uint32_t a_enc = ntt_scalar_mont_encode(a,
+        uint64_t a_enc = ntt_scalar_mont_encode(a,
                                                 state->q,
+                                                state->mont_qinv,
                                                 state->mont_r2,
-                                                state->mont_qinv);
-        return ntt_scalar_mont_decode(a_enc, state->q, state->mont_qinv);
+                                                state->q32);
+        return ntt_scalar_mont_decode(a_enc,
+                                      state->q,
+                                      state->mont_qinv,
+                                      state->q32);
     }
-    return ntt_scalar_barrett_reduce_u64(a, state->q, state->barrett_mu);
+    if (state->q32) {
+        return ntt_scalar_barrett_reduce_u64(a,
+                                             (uint32_t)state->q,
+                                             state->barrett_mu);
+    }
+    return ntt_scalar_barrett_reduce_u128(0,
+                                          a,
+                                          state->q,
+                                          state->barrett_mu_hi,
+                                          state->barrett_mu_lo);
 }
 
 /**
@@ -91,13 +105,27 @@ static uint32_t scalar_reduce(uint32_t a, const ntt_scalar_state *state)
  * @param[in] state Scalar adapter state selecting the reduction backend.
  * @return Backend-domain product modulo @p q.
  */
-static uint32_t
-scalar_mul(uint32_t a, uint32_t b, const ntt_scalar_state *state)
+static uint64_t
+scalar_mul(uint64_t a, uint64_t b, const ntt_scalar_state *state)
 {
     if (state->reduction == NTT_SCALAR_REDUCTION_MONTGOMERY) {
-        return ntt_scalar_mont_mul(a, b, state->q, state->mont_qinv);
+        return ntt_scalar_mont_mul(a,
+                                   b,
+                                   state->q,
+                                   state->mont_qinv,
+                                   state->q32);
     }
-    return ntt_scalar_barrett_mul(a, b, state->q, state->barrett_mu);
+    if (state->q32) {
+        return ntt_scalar_barrett_mul(a,
+                                      b,
+                                      (uint32_t)state->q,
+                                      state->barrett_mu);
+    }
+    return ntt_scalar_barrett_mul_u128(a,
+                                       b,
+                                       state->q,
+                                       state->barrett_mu_hi,
+                                       state->barrett_mu_lo);
 }
 
 /**
@@ -111,13 +139,14 @@ scalar_mul(uint32_t a, uint32_t b, const ntt_scalar_state *state)
  *
  * @return Value in the selected backend representation.
  */
-static uint32_t scalar_encode(uint32_t a, const ntt_scalar_state *state)
+static uint64_t scalar_encode(uint64_t a, const ntt_scalar_state *state)
 {
     if (state->reduction == NTT_SCALAR_REDUCTION_MONTGOMERY) {
         return ntt_scalar_mont_encode(a,
                                       state->q,
+                                      state->mont_qinv,
                                       state->mont_r2,
-                                      state->mont_qinv);
+                                      state->q32);
     }
     return scalar_reduce(a, state);
 }
@@ -133,10 +162,13 @@ static uint32_t scalar_encode(uint32_t a, const ntt_scalar_state *state)
  *
  * @return Canonical residue in @f$[0,q)@f$.
  */
-static uint32_t scalar_decode(uint32_t a, const ntt_scalar_state *state)
+static uint64_t scalar_decode(uint64_t a, const ntt_scalar_state *state)
 {
     if (state->reduction == NTT_SCALAR_REDUCTION_MONTGOMERY) {
-        return ntt_scalar_mont_decode(a, state->q, state->mont_qinv);
+        return ntt_scalar_mont_decode(a,
+                                      state->q,
+                                      state->mont_qinv,
+                                      state->q32);
     }
     return scalar_reduce(a, state);
 }
@@ -153,7 +185,7 @@ static uint32_t scalar_decode(uint32_t a, const ntt_scalar_state *state)
  *
  * @return Canonical residue in @f$[0,q)@f$.
  */
-uint32_t ntt__scalar_canonicalize_value(uint32_t a,
+uint64_t ntt__scalar_canonicalize_value(uint64_t a,
                                         const ntt_scalar_state *state)
 {
     return scalar_reduce(a, state);
@@ -170,7 +202,7 @@ uint32_t ntt__scalar_canonicalize_value(uint32_t a,
  *
  * @return Backend-domain product modulo @p q.
  */
-uint32_t ntt__scalar_mul(uint32_t a, uint32_t b, const ntt_scalar_state *state)
+uint64_t ntt__scalar_mul(uint64_t a, uint64_t b, const ntt_scalar_state *state)
 {
     return scalar_mul(a, b, state);
 }
@@ -187,7 +219,7 @@ uint32_t ntt__scalar_mul(uint32_t a, uint32_t b, const ntt_scalar_state *state)
  *
  * @return Backend-domain sum modulo @p q.
  */
-uint32_t ntt__scalar_add(uint32_t a, uint32_t b, const ntt_scalar_state *state)
+uint64_t ntt__scalar_add(uint64_t a, uint64_t b, const ntt_scalar_state *state)
 {
     return scalar_add(a, b, state->q);
 }
@@ -204,7 +236,7 @@ uint32_t ntt__scalar_add(uint32_t a, uint32_t b, const ntt_scalar_state *state)
  *
  * @return Backend-domain difference modulo @p q.
  */
-uint32_t ntt__scalar_sub(uint32_t a, uint32_t b, const ntt_scalar_state *state)
+uint64_t ntt__scalar_sub(uint64_t a, uint64_t b, const ntt_scalar_state *state)
 {
     return scalar_sub(a, b, state->q);
 }
@@ -217,7 +249,7 @@ uint32_t ntt__scalar_sub(uint32_t a, uint32_t b, const ntt_scalar_state *state)
  *
  * @return Backend-domain representation of @p a.
  */
-uint32_t ntt__scalar_encode_value(uint32_t a, const ntt_scalar_state *state)
+uint64_t ntt__scalar_encode_value(uint64_t a, const ntt_scalar_state *state)
 {
     return scalar_encode(a, state);
 }
@@ -230,7 +262,7 @@ uint32_t ntt__scalar_encode_value(uint32_t a, const ntt_scalar_state *state)
  *
  * @return Canonical residue.
  */
-uint32_t ntt__scalar_decode_value(uint32_t a, const ntt_scalar_state *state)
+uint64_t ntt__scalar_decode_value(uint64_t a, const ntt_scalar_state *state)
 {
     return scalar_decode(a, state);
 }
@@ -247,15 +279,26 @@ uint32_t ntt__scalar_decode_value(uint32_t a, const ntt_scalar_state *state)
  *
  * @return Canonical residue @f$base^{exp}\bmod q@f$.
  */
-uint32_t
-ntt__scalar_modpow(uint32_t base, uint32_t exp, const ntt_scalar_state *state)
+uint64_t
+ntt__scalar_modpow(uint64_t base, uint64_t exp, const ntt_scalar_state *state)
 {
     if (state->reduction == NTT_SCALAR_REDUCTION_MONTGOMERY) {
         return ntt_scalar_mont_modpow(base,
                                       exp,
                                       state->q,
+                                      state->mont_qinv,
                                       state->mont_r2,
-                                      state->mont_qinv);
+                                      state->q32);
     }
-    return ntt_scalar_barrett_modpow(base, exp, state->q, state->barrett_mu);
+    if (state->q32) {
+        return ntt_scalar_barrett_modpow(base,
+                                         exp,
+                                         (uint32_t)state->q,
+                                         state->barrett_mu);
+    }
+    return ntt_scalar_barrett_modpow_u128(base,
+                                          exp,
+                                          state->q,
+                                          state->barrett_mu_hi,
+                                          state->barrett_mu_lo);
 }

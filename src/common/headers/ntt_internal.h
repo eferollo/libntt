@@ -50,6 +50,11 @@ bool ntt__resolve_roots(uint64_t q,
                         ntt_transform_type type,
                         uint64_t *omega,
                         uint64_t *psi);
+bool ntt__is_primitive_root_of_order(uint64_t x, uint32_t order, uint64_t q);
+bool ntt__distinct_prime_factors(uint64_t x,
+                                 uint64_t *factors,
+                                 size_t max_factors,
+                                 size_t *count);
 
 #define SAFE_FREE(ptr)       \
     do {                     \
