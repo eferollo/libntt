@@ -118,7 +118,7 @@ void *ntt__adapter_setup(const ntt_config *config)
 /**
  * @brief Releases scalar toy adapter state.
  *
- * @param[in] state Adapter-specific state to release.
+ * @param[in] state_ptr Adapter-specific state to release.
  */
 void ntt__adapter_teardown(void *state_ptr)
 {
@@ -151,7 +151,7 @@ bool ntt__validate_modulus(const ntt_config *config)
  * @brief Performs an in-place iterative radix-2 Number Theoretic Transform
  * (NTT).
  *
- * @param[in] state Backend-specific state containing the transform size (n)
+ * @param[in] state Backend-specific state.containing the transform size (n)
  *                  and modulus (q).
  * @param[in,out] a Array of n coefficients to transform. On success, it
  *                  contains the transformed coefficients.
@@ -204,7 +204,7 @@ static int iterative_fft(ntt_scalar_toy_state *state,
 /**
  * @brief Computes the forward Number Theoretic Transform (NTT).
  *
- * @param[in] state Backend-specific state.
+ * @param[in] state_ptr Backend-specific state.
  * @param[in,out] a Array of ctx->n coefficients. On success, it contains the
  *                  forward NTT of the input.
  *
@@ -224,7 +224,7 @@ int ntt__forward(void *state_ptr, uint64_t *a)
 /**
  * @brief Computes the inverse Number Theoretic Transform (INTT).
  *
- * @param[in] state Backend-specific state.
+ * @param[in] state_ptr Backend-specific state.
  * @param[in,out] a Array of ctx->n coefficients. On success, it contains the
  *                  inverse NTT of the input.
  *

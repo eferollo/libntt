@@ -468,7 +468,8 @@ cleanup:
  * state structure, and finally releases the state allocation. Passing NULL
  * is safe and has no effect.
  *
- * @param state_ptr Scalar adapter state returned by @ref ntt_scalar_setup.
+ * @param state_ptr Scalar adapter state returned by @ref
+ * ntt__scalar_adapter_setup.
  */
 void ntt__scalar_adapter_teardown(void *state_ptr)
 {
@@ -653,7 +654,7 @@ static int scalar_inverse_internal(ntt_scalar_state *state, uint64_t *a)
  * @note No Montgomery conversion occurs inside the butterfly loops.
  *
  * @param state_ptr Scalar adapter state returned by
- *                  @ref ntt_scalar_adapter_setup.
+ *                  @ref ntt__scalar_adapter_setup.
  * @param a         In/out coefficient array of length @p n. Input and output
  *                  values are always in canonical representation at the public
  *                  API boundary.
@@ -695,7 +696,7 @@ int ntt__scalar_forward(void *state_ptr, uint64_t *a)
  * representation.
  *
  * @param state_ptr Scalar adapter state returned by
- *                  @ref ntt_scalar_adapter_setup.
+ *                  @ref ntt__scalar_adapter_setup.
  * @param a         In/out coefficient array of length @p n. Input and output
  *                  values are always in canonical representation at the public
  *                  API boundary.

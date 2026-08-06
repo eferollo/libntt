@@ -176,7 +176,7 @@ static uint64_t scalar_decode(uint64_t a, const ntt_scalar_state *state)
 /**
  * @brief Canonicalizes an externally supplied integer value.
  *
- * Unlike @ref ntt_scalar_encode_value, this function never treats the input as
+ * Unlike @ref ntt__scalar_encode_value, this function never treats the input as
  * an already encoded Montgomery value. It is intended for public API inputs
  * and setup-time parameters that are ordinary integers.
  *

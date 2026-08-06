@@ -48,7 +48,7 @@ typedef enum {
  *
  * Stores the configured NTT parameters, reduction-specific constants, and
  * precomputed twiddle/twist tables. The representation of all precomputed
- * arithmetic tables follows @ref ntt_scalar_reduction so that the transform
+ * arithmetic tables follows @ref ntt_scalar_redc so that the transform
  * hot path can operate without conversions.
  */
 typedef struct {

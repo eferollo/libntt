@@ -27,7 +27,7 @@
 extern "C" {
 #endif
 
-/**
+/*****************************************************************************
  * Public utility functions useful for NTT adapter implementations.
  *
  * This header provides generic utility functions that may be useful when
@@ -38,7 +38,7 @@ extern "C" {
  * backend and are intended to provide reusable building blocks for adapter
  * implementations. They form part of the public API and may be used by both
  * the library's built-in adapters and external adapter implementations.
- */
+ ****************************************************************************/
 
 /**
  * @brief Tests whether a 64-bit unsigned integer is prime.
@@ -76,9 +76,9 @@ bool ntt_is_prime(uint64_t q);
 /**
  * @brief Checks whether a value is a power of two.
  *
- * @param[in] x Value to test.
+ * @param[in] n Value to test.
  *
- * @return true If x is a power of two.
+ * @return true If n is a power of two.
  * @return false Otherwise.
  */
 bool ntt_is_power_of_two(uint32_t n);
