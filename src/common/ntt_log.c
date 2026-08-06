@@ -23,6 +23,7 @@
 #include <stdarg.h>
 #include <stdatomic.h>
 #include <stdio.h>
+#include <string.h>
 #include <time.h>
 
 /**
@@ -51,9 +52,25 @@ static const char *level_str(ntt_log_level level)
     }
 }
 
+/**
+ * @brief Returns the final path component of @p path (file name only).
+ */
+static const char *file_basename(const char *path)
+{
+    const char *slash = strrchr(path, '/');
+#ifdef _WIN32
+    const char *backslash = strrchr(path, '\\');
+    if (backslash != NULL && (slash == NULL || backslash > slash)) {
+        slash = backslash;
+    }
+#endif
+    return (slash != NULL) ? slash + 1 : path;
+}
+
 void ntt__log_write(ntt_log_level level,
                     const char *file,
                     int line,
+                    const char *func,
                     const char *fmt,
                     ...)
 {
@@ -71,13 +88,14 @@ void ntt__log_write(ntt_log_level level,
     char timebuf[16] = {0};
     strftime(timebuf, sizeof(timebuf), "%H:%M:%S", &tm_info);
 
-    /* Log timestamp, severity, source file, and line number */
+    /* Log timestamp, severity, source file, and function. */
     fprintf(stderr,
-            "[%s.%03ld][%-5s] %s:%d: ",
+            "[%s.%03ld][%-5s] %s (%s:%d): ",
             timebuf,
             ts.tv_nsec / 1000000L,
             level_str(level),
-            file,
+            func,
+            file_basename(file),
             line);
 
     /* Print the user-provided printf-style log message. */

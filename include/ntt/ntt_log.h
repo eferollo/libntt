@@ -48,19 +48,20 @@ typedef enum {
 void ntt_log_set_level(ntt_log_level level);
 
 /**
- * Internal logging function. This function should not be called directly. 
- * Use the NTT_LOG() macro instead 
+ * Internal logging function. This function should not be called directly.
+ * Use the NTT_LOG() macro instead
  */
 void ntt__log_write(ntt_log_level level,
                     const char *file,
                     int line,
+                    const char *func,
                     const char *fmt,
                     ...);
 
 /**
  * NTT_LOG_ENABLED is a compile-time option (set via CMake option
- * NTT_ENABLE_LOGGING). When it's off, NTT_LOG() expands to nothing, so it 
- * costs literally zero at runtime and is safe to leave scattered through the 
+ * NTT_ENABLE_LOGGING). When it's off, NTT_LOG() expands to nothing, so it
+ * costs literally zero at runtime and is safe to leave scattered through the
  * code, including near hot paths, for release or benchmark builds.
  */
 #if defined(NTT_LOG_ENABLED)
