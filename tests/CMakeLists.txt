@@ -56,14 +56,23 @@ ntt_cmocka_unit(torture_scalar_montgomery
 # individually testable. The included source's non-static symbols would
 # otherwise collide with the copies compiled into the library.
 #
-# The real logging implementation (common/ntt_log.c) is compiled in and
+# The real logging implementation (common/ntt_log.c) is linked in and
 # NTT_LOG_ENABLED is defined, so NTT_LOG() works inside the included source
-# and the test can steer it with ntt_log_set_level().
+# and the test can steer it with ntt_log_set_level(). Pass WITH_LOG=OFF for
+# tests that #include ntt_log.c themselves (torture_ntt_log) to avoid
+# duplicate definitions.
 function(ntt_cmocka_unit_standalone name source)
-    add_executable(${name}
-        ${source}
-        ${PROJECT_SOURCE_DIR}/src/common/ntt_log.c
-    )
+    cmake_parse_arguments(ARG "" "WITH_LOG" "" ${ARGN})
+    if(NOT DEFINED ARG_WITH_LOG)
+        set(ARG_WITH_LOG ON)
+    endif()
+
+    set(_srcs ${source})
+    if(ARG_WITH_LOG)
+        list(APPEND _srcs ${PROJECT_SOURCE_DIR}/src/common/ntt_log.c)
+    endif()
+
+    add_executable(${name} ${_srcs})
 
     target_link_libraries(${name}
         PRIVATE
@@ -97,4 +106,9 @@ endfunction()
 
 ntt_cmocka_unit_standalone(torture_ntt_utils
     unittests/torture_ntt_utils.c
+)
+
+ntt_cmocka_unit_standalone(torture_ntt_log
+    unittests/torture_ntt_log.c
+    WITH_LOG OFF
 )
