@@ -35,6 +35,15 @@ static _Atomic ntt_log_level g_ntt_log_level = NTT_LOG_ERROR;
 
 void ntt_log_set_level(ntt_log_level level)
 {
+    switch(level) {
+        case NTT_LOG_NONE:
+        case NTT_LOG_ERROR:
+        case NTT_LOG_INFO:
+        case NTT_LOG_DEBUG:
+            break;
+        default:
+            return;
+    }
     atomic_store(&g_ntt_log_level, level);
 }
 

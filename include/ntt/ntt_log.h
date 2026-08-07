@@ -41,7 +41,8 @@ typedef enum {
  *
  * @param[in] level Logging severity threshold.
  *
- * @note The default logging level is NTT_LOG_ERROR.
+ * @note The default logging level is NTT_LOG_ERROR. Out-of-range values
+ * are discarded, leaving the currently configured level unchanged.
  *
  * @see ntt_log_level
  */
