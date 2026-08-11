@@ -81,8 +81,10 @@ typedef struct {
     uint64_t *inv_twiddle; /* pre-computed stage inverse twiddles */
 } ntt_scalar_state;
 
-bool ntt__scalar_validate_modulus(const ntt_config *config);
-void *ntt__scalar_adapter_setup(const ntt_config *config);
+bool ntt__scalar_validate_modulus(const ntt_config *config,
+                                  const ntt_core_api *api);
+void *ntt__scalar_adapter_setup(const ntt_config *config,
+                                const ntt_core_api *api);
 void ntt__scalar_adapter_teardown(void *state);
 
 int ntt__scalar_forward(void *state, uint64_t *a);
@@ -101,5 +103,7 @@ uint64_t ntt__scalar_encode_value(uint64_t a, const ntt_scalar_state *state);
 uint64_t ntt__scalar_decode_value(uint64_t a, const ntt_scalar_state *state);
 uint64_t
 ntt__scalar_modpow(uint64_t base, uint64_t exp, const ntt_scalar_state *state);
+
+const ntt_adapter *ntt_adapter_scalar(void);
 
 #endif /* NTT_SCALAR_INTERNAL_H */

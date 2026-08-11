@@ -49,8 +49,10 @@ uint64_t ntt__mulmod(uint64_t a, uint64_t b, uint64_t q);
 uint64_t ntt__modpow(uint64_t base, uint64_t exp, uint64_t q);
 uint64_t ntt__modinv(uint64_t a, uint64_t q);
 
-bool ntt__validate_modulus(const ntt_config *config);
-void *ntt__adapter_setup(const ntt_config *config);
+const ntt_adapter *ntt_adapter_scalar_toy(void);
+
+bool ntt__validate_modulus(const ntt_config *config, const ntt_core_api *api);
+void *ntt__adapter_setup(const ntt_config *config, const ntt_core_api *api);
 void ntt__adapter_teardown(void *state);
 
 int ntt__forward(void *state, uint64_t *a);

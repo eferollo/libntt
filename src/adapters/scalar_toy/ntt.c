@@ -60,19 +60,19 @@ static int bitrev_permute(uint64_t *a, uint32_t n)
  * @return Newly allocated scalar toy adapter state.
  * @return NULL on failure.
  */
-void *ntt__adapter_setup(const ntt_config *config)
+void *ntt__adapter_setup(const ntt_config *config, const ntt_core_api *api)
 {
     uint64_t q, omega, psi;
     uint32_t n;
-    if (config == NULL) {
+    if (config == NULL || api == NULL) {
         NTT_LOG(NTT_LOG_ERROR, "Invalid scalar toy adapter configuration");
         return NULL;
     }
 
-    q = ntt_config_get_modulus(config);
-    n = ntt_config_get_size(config);
-    omega = ntt_config_get_omega(config);
-    psi = ntt_config_get_psi(config);
+    q = ntt_core_get_modulus(api, config);
+    n = ntt_core_get_size(api, config);
+    omega = ntt_core_get_omega(api, config);
+    psi = ntt_core_get_psi(api, config);
 
     ntt_scalar_toy_state *state = calloc(1, sizeof(*state));
     if (state == NULL) {
@@ -141,9 +141,9 @@ void ntt__adapter_teardown(void *state_ptr)
  * @return true if q is a valid modulus for this adapter.
  * @return false otherwise.
  */
-bool ntt__validate_modulus(const ntt_config *config)
+bool ntt__validate_modulus(const ntt_config *config, const ntt_core_api *api)
 {
-    uint64_t q = ntt_config_get_modulus(config);
+    uint64_t q = ntt_core_get_modulus(api, config);
     return q > 1;
 }
 

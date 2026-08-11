@@ -108,23 +108,25 @@ static uint64_t scalar_root_power(uint64_t root,
  * common NTT context layer before root resolution.
  *
  * @param[in] config NTT configuration.
+ * @param[in] api    Core API injected by the library.
  *
  * @return true if config's q satisfies the scalar adapter's modulus
  *         requirements for the selected reduction backend.
  * @return false otherwise.
  */
-bool ntt__scalar_validate_modulus(const ntt_config *config)
+bool ntt__scalar_validate_modulus(const ntt_config *config,
+                                  const ntt_core_api *api)
 {
     uint64_t q;
     uint32_t flags;
 
-    if (config == NULL) {
+    if (config == NULL || api == NULL) {
         NTT_LOG(NTT_LOG_ERROR, "Invalid NTT configuration");
         return false;
     }
 
-    q = ntt_config_get_modulus(config);
-    flags = ntt_config_get_flags(config);
+    q = ntt_core_get_modulus(api, config);
+    flags = ntt_core_get_flags(api, config);
 
     /*
      * Reject moduli greater than 2^63. The general 64-bit Barrett and
@@ -143,7 +145,7 @@ bool ntt__scalar_validate_modulus(const ntt_config *config)
      * transforms are defined. ntt_is_prime() rejects values below 2 and
      * composite values.
      */
-    if (ntt_is_prime(q) == false) {
+    if (ntt_core_is_prime(api, q) == false) {
         NTT_LOG(NTT_LOG_ERROR,
                 "Invalid modulus q=%llu: modulus is not prime",
                 (unsigned long long)q);
@@ -198,23 +200,28 @@ bool ntt__scalar_validate_modulus(const ntt_config *config)
  * @param[in] config NTT configuration containing the modulus, transform size,
  *                   primitive roots, and arithmetic reduction flags.
  *
+ * @param[in] config NTT configuration containing the modulus, transform size,
+ *                   primitive roots, and arithmetic reduction flags.
+ * @param[in] api    Core API injected by the library.
+ *
  * @return Pointer to the initialized scalar adapter state on success.
  * @return NULL on failure.
  */
-void *ntt__scalar_adapter_setup(const ntt_config *config)
+void *ntt__scalar_adapter_setup(const ntt_config *config,
+                                const ntt_core_api *api)
 {
     uint64_t q, omega, psi;
     uint32_t n, flags;
-    if (config == NULL) {
+    if (config == NULL || api == NULL) {
         NTT_LOG(NTT_LOG_ERROR, "Invalid scalar adapter configuration");
         return NULL;
     }
 
-    q = ntt_config_get_modulus(config);
-    n = ntt_config_get_size(config);
-    omega = ntt_config_get_omega(config);
-    psi = ntt_config_get_psi(config);
-    flags = ntt_config_get_flags(config);
+    q = ntt_core_get_modulus(api, config);
+    n = ntt_core_get_size(api, config);
+    omega = ntt_core_get_omega(api, config);
+    psi = ntt_core_get_psi(api, config);
+    flags = ntt_core_get_flags(api, config);
 
     /*
      * Barrett and Montgomery reduction define different internal arithmetic
