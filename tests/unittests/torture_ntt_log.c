@@ -1,7 +1,5 @@
 #include "ntt_log.c"
-
-#include <setjmp.h>
-#include <cmocka.h>
+#include "test_common.h"
 
 void torture_ntt_log_set_level(void **state)
 {

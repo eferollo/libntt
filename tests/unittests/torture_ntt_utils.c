@@ -2,16 +2,6 @@
 #include "ref_arith.h"
 #include "test_common.h"
 
-#include <setjmp.h>
-#include <stdarg.h>
-#include <stdbool.h>
-#include <stddef.h>
-#include <stdint.h>
-#include <stdlib.h>
-#include <string.h>
-
-#include <cmocka.h>
-
 /* Deterministic PRNG (shared splitmix64 from test_common.h) */
 static uint64_t prng_state = UINT64_C(0x9E3779B97F4A7C15);
 

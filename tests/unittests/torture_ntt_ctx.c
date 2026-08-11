@@ -1,16 +1,6 @@
 #include "ntt_ctx.c"
 #include "test_common.h"
 
-#include <setjmp.h>
-#include <stdarg.h>
-#include <stdbool.h>
-#include <stddef.h>
-#include <stdint.h>
-#include <stdlib.h>
-#include <string.h>
-
-#include <cmocka.h>
-
 /* q = 2^12 * 3 + 1, a valid transform domain for the mock adapter. */
 #define TEST_Q UINT64_C(12289)
 #define TEST_N 256

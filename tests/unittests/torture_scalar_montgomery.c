@@ -7,14 +7,6 @@
 #include "ref_arith.h"
 #include "test_common.h"
 
-#include <setjmp.h>
-#include <stdarg.h>
-#include <stdbool.h>
-#include <stddef.h>
-#include <stdint.h>
-#include <stdlib.h>
-
-#include <cmocka.h>
 #include <openssl/rand.h>
 
 /** @brief Deterministic PRNG state (shared splitmix64 in test_common.h). */
