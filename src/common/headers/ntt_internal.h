@@ -20,10 +20,10 @@
 #ifndef NTT_INTERNAL_H
 #define NTT_INTERNAL_H
 
+#include "adapter_internal.h"
+#include "config_internal.h"
 #include "ntt/ntt.h"
 #include "ntt/ntt_utils.h"
-#include "ntt_adapter_internal.h"
-#include "ntt_config_internal.h"
 #include <stdbool.h>
 #include <stdlib.h>
 

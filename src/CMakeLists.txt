@@ -3,7 +3,10 @@ set(NTT_COMMON_SOURCES
     common/ntt_adapter.c
     common/ntt_ctx.c
     common/ntt_config.c
+    common/ntt_cfg_file.c
+    common/ntt_core.c
     common/ntt_log.c
+    common/ntt_module.c
     common/ntt_utils.c
 )
 
@@ -30,6 +33,8 @@ target_include_directories(ntt
 )
 
 target_compile_options(ntt PRIVATE -Wall -Wextra -Wpedantic)
+
+target_link_libraries(ntt PRIVATE ${CMAKE_DL_LIBS})
 
 if(NTT_ENABLE_LOGGING)
     target_compile_definitions(ntt PUBLIC NTT_LOG_ENABLED)

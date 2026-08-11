@@ -1,5 +1,5 @@
 /*
- * ntt_config_internal.h
+ * cfg_file.h
  * This file is part of the NTT Library.
  *
  * Copyright 2026 Francesco Rollo <eferollo@gmail.com>
@@ -17,22 +17,17 @@
  * limitations under the License.
  */
 
-#ifndef NTT_CONFIG_INTERNAL_H
-#define NTT_CONFIG_INTERNAL_H
+#ifndef NTT_CFG_FILE_H
+#define NTT_CFG_FILE_H
 
-#include "ntt/ntt_adapter.h"
+#include <stdbool.h>
+#include <stddef.h>
 
-/**
- * @brief Internal representation of the opaque public NTT configuration object.
- */
-struct ntt_config_s {
-    uint64_t q;
-    uint32_t n;
-    uint64_t omega;
-    uint64_t psi;
-    uint32_t flags;
-    /* defaults to NEGACYCLIC (O) via calloc */
-    ntt_transform_type transform_type;
-};
+bool ntt__config_default_path(char *buf, size_t capacity);
+bool ntt__config_file_load(const char *path,
+                           char *adapter,
+                           size_t adapter_cap,
+                           char *module_dir,
+                           size_t dir_cap);
 
-#endif /* NTT_CONFIG_INTERNAL_H */
+#endif /* NTT_CFG_FILE_H */

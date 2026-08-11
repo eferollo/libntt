@@ -21,6 +21,7 @@
 #define NTT_ADAPTER_H
 
 #include "ntt_config.h"
+#include "ntt_core.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -42,11 +43,14 @@ extern "C" {
  * @brief Validates whether a modulus is supported by an NTT Adapter.
  *
  * @param[in] config NTT configuration.
+ * @param[in] api    Core API injected by the library, used to read the
+ *                   (opaque) configuration.
  *
  * @return true if config's q is supported by the Adapter.
  * @return false otherwise.
  */
-typedef bool (*ntt_validate_modulus_fn)(const ntt_config *config);
+typedef bool (*ntt_validate_modulus_fn)(const ntt_config *config,
+                                        const ntt_core_api *api);
 
 /**
  * @brief Initializes Adapter-specific state for an NTT context.
@@ -56,11 +60,14 @@ typedef bool (*ntt_validate_modulus_fn)(const ntt_config *config);
  * the state. Its representation is entirely private to the Adapter.
  *
  * @param[in] config NTT configuration.
+ * @param[in] api    Core API injected by the library, used to read the
+ *                   (opaque) configuration.
  *
  * @return Newly allocated Adapter-specific state.
  * @return NULL on failure.
  */
-typedef void *(*ntt_adapter_setup_fn)(const ntt_config *config);
+typedef void *(*ntt_adapter_setup_fn)(const ntt_config *config,
+                                      const ntt_core_api *api);
 
 /**
  * @brief Releases Adapter-specific state owned by an NTT context.
@@ -171,6 +178,19 @@ typedef enum {
 } ntt_adapter_capabilities;
 
 /**
+ * @brief Selector for the built-in adapter registry.
+ *
+ * Used to switch among adapters compiled into the library explicitly. When
+ * selecting through the configuration file, the plain @em name string of the
+ * built-in is used instead (e.g., "scalar", "scalar_toy").
+ */
+typedef enum {
+    NTT_ADAPTER_DEFAULT = 0, /* resolve to the library default */
+    NTT_ADAPTER_SCALAR,      /* built-in optimized adapter */
+    NTT_ADAPTER_SCALAR_TOY,  /* built-in reference adapter */
+} ntt_adapter_selector;
+
+/**
  * @brief Opaque handle identifying one NTT adapter.
  *
  * An adapter provides a complete implementation of the NTT operations. Its
@@ -237,14 +257,89 @@ uint32_t ntt_adapter_get_supported_flags(const ntt_adapter *adapter);
  */
 bool ntt_adapter_supports_flags(const ntt_adapter *adapter, uint32_t flags);
 
-/* ADAPTERS LIST */
+/**
+ * @brief Returns the NTT adapter named @p name.
+ *
+ * An adapter is delivered either built into the library or, for external
+ * implementations, as a module: a standalone shared library loaded at run
+ * time that exports ntt_adapter_module_init. See ntt_core_api.h for the
+ * terminology.
+ *
+ * Built-in adapters are selected by name and resolved through the library's
+ * internal registry; their getters are not part
+ * of the public API. Select one explicitly with ntt_adapter_get() or via the
+ * configuration file instead.
+ *
+ * If @p module_dir is NULL the built-in registry is queried. Otherwise the
+ * shared library <module_dir>/libntt_adapter_<name>.so is loaded at run time
+ * and its exported ntt_adapter_module_init entry is invoked to obtain the
+ * adapter descriptor.
+ *
+ * @param[in] name       Adapter name (e.g., "scalar_toy", "scalar").
+ * @param[in] module_dir Directory containing the adapter module, or NULL to
+ *                       select a built-in adapter.
+ *
+ * @return Adapter descriptor.
+ * @return NULL if the adapter cannot be found or loaded.
+ */
+const ntt_adapter *ntt_adapter_load(const char *name, const char *module_dir);
 
 /**
- * @brief Generic, runtime-modulus scalar adapter. Uses plain `%` for
- *        reduction, prioritizes clarity/correctness over speed, and
- *        is the reference every other adapter is checked against.
+ * @brief Selects an adapter by built-in selector.
+ *
+ * @param[in] selector Built-in adapter selector.
+ *
+ * @return Adapter descriptor. An out-of-range @p selector falls back to the
+ *         library default (see ntt_adapter_get_default()), so this never
+ *         returns NULL.
  */
-const ntt_adapter *ntt_adapter_scalar_toy(void);
+const ntt_adapter *ntt_adapter_get(ntt_adapter_selector selector);
+
+/**
+ * @brief Sets the process-local default adapter override.
+ *
+ * When set, this takes precedence over the configuration file. Pass a non-NULL
+ * @p name for a built-in or external adapter; @p module_dir is required only
+ * for a non-built-in (external) name. The values are copied.
+ *
+ * @param[in] name       Adapter name.
+ * @param[in] module_dir Directory containing an external adapter module, or
+ *                       NULL for a built-in adapter.
+ *
+ * @return NTT_OK on success.
+ * @return NTT_ERROR on invalid input.
+ */
+int ntt_adapter_set_default(const char *name, const char *module_dir);
+
+/**
+ * @brief Returns the library's default adapter.
+ *
+ * Resolution order, from highest to lowest precedence:
+ *   1. the adapter set via ntt_adapter_set_default();
+ *   2. the adapter named by the global configuration file;
+ *   3. the built-in "scalar" adapter.
+ *
+ * The configuration file path is given by the NTT_CONFIG_FILE environment
+ * variable, defaulting to $HOME/.config/libntt/ntt.conf. Its "adapter" and
+ * "module_dir" keys select the adapter. The NTT_ADAPTER_MODULE_DIR environment
+ * variable overrides "module_dir". The resolved adapter is cached until
+ * ntt_adapter_unload_all() is called. If nothing resolves explicitly, the
+ * built-in "scalar" adapter is returned.
+ *
+ * @return The default adapter descriptor (never NULL).
+ */
+const ntt_adapter *ntt_adapter_get_default(void);
+
+/**
+ * @brief Releases all dynamically loaded adapter modules.
+ *
+ * Existing ntt_ctx objects created from a dynamically loaded adapter must be
+ * destroyed before calling this function. It also resets the default adapter
+ * resolution state: both the cached default and any override installed by
+ * ntt_adapter_set_default() are cleared, so the next ntt_adapter_get_default()
+ * call re-resolves from the configuration file.
+ */
+void ntt_adapter_unload_all(void);
 
 #ifdef __cplusplus
 }

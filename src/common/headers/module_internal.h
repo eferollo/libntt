@@ -1,5 +1,5 @@
 /*
- * ntt_adapter_internal.h
+ * module_internal.h
  * This file is part of the NTT Library.
  *
  * Copyright 2026 Francesco Rollo <eferollo@gmail.com>
@@ -17,16 +17,14 @@
  * limitations under the License.
  */
 
-#ifndef NTT_ADAPTER_INTERNAL_H
-#define NTT_ADAPTER_INTERNAL_H
+#ifndef NTT_MODULE_INTERNAL_H
+#define NTT_MODULE_INTERNAL_H
 
 #include <ntt/ntt_adapter.h>
-#include <stddef.h>
 
-bool ntt__adapter_has_field(const ntt_adapter *adapter,
-                            size_t offset,
-                            size_t size);
+const ntt_adapter *ntt__registry_lookup(const char *name);
+const ntt_adapter *ntt__module_load_from_dir(const char *module_dir,
+                                             const char *name);
+void ntt__module_unload_all(void);
 
-bool ntt__adapter_is_compatible(const ntt_adapter *adapter);
-
-#endif /* NTT_ADAPTER_INTERNAL_H */
+#endif /* NTT_MODULE_INTERNAL_H */

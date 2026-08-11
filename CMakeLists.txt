@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 
-project(ntt_lib
+project(libntt
     VERSION 0.0.1
     LANGUAGES C
 )
@@ -42,6 +42,28 @@ option(NTT_ENABLE_LOGGING
 )
 
 install(FILES LICENSE DESTINATION share/licenses/libntt)
+
+# Adapter module helper.
+#
+# Builds a standalone shared library that implements an NTT adapter and links
+# nothing against libntt. The module sees only the public headers, exports a
+# single ntt_adapter_module_init entry point, and reads the configuration
+# through the ntt_core_api dispatched by the loader at run time.
+function(ntt_adapter_module name)
+    add_library(ntt_adapter_${name} SHARED ${ARGN})
+    set_target_properties(ntt_adapter_${name} PROPERTIES
+        C_VISIBILITY_PRESET hidden
+        POSITION_INDEPENDENT_CODE ON
+        OUTPUT_NAME "ntt_adapter_${name}"
+        LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/modules
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/modules)
+    target_include_directories(ntt_adapter_${name} PRIVATE
+        ${CMAKE_SOURCE_DIR}/include)
+    target_compile_definitions(ntt_adapter_${name} PRIVATE
+        NTT_MODULE_BUILD)
+    target_compile_options(ntt_adapter_${name} PRIVATE
+        -Wall -Wextra -Wpedantic)
+endfunction()
 
 # ---------------------------------------------------------------------------
 # Library

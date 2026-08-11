@@ -17,6 +17,7 @@
  * limitations under the License.
  */
 
+#include "core_internal.h"
 #include "ntt/ntt_adapter.h"
 #include "ntt_internal.h"
 #include <stdint.h>
@@ -55,7 +56,7 @@ ntt_ctx *ntt_create(const ntt_adapter *adapter, const ntt_config *config)
      * arithmetic backend. Transform-size and root-of-unity requirements are
      * common NTT rules and are validated below before root resolution.
      */
-    if (adapter->validate_modulus(config) == false) {
+    if (adapter->validate_modulus(config, ntt__core_api()) == false) {
         NTT_LOG(NTT_LOG_ERROR,
                 "Unsupported modulus q=%llu for adapter %s",
                 (unsigned long long)q,
@@ -118,7 +119,7 @@ ntt_ctx *ntt_create(const ntt_adapter *adapter, const ntt_config *config)
      * initialized by the selected adapter. The common layer deliberately does
      * not inspect or manipulate the opaque adapter state.
      */
-    ctx->state = adapter->setup(&resolved);
+    ctx->state = adapter->setup(&resolved, ntt__core_api());
     if (ctx->state == NULL) {
         NTT_LOG(NTT_LOG_ERROR,
                 "Setup failed for adapter %s",
