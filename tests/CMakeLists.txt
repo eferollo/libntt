@@ -112,3 +112,7 @@ ntt_cmocka_unit_standalone(torture_ntt_log
     unittests/torture_ntt_log.c
     WITH_LOG OFF
 )
+
+ntt_cmocka_unit(torture_ntt_ctx
+    unittests/torture_ntt_ctx.c
+)
