@@ -1,6 +1,7 @@
 project(unittests C)
 
 set(NTT_UNIT_TESTS
+    torture_ntt_adapter
     torture_ntt_api
     torture_ntt_cfg_file
     torture_ntt_config
