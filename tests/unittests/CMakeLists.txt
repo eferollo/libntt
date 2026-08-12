@@ -5,6 +5,7 @@ set(NTT_UNIT_TESTS
     torture_ntt_api
     torture_ntt_cfg_file
     torture_ntt_config
+    torture_ntt_core
     torture_ntt_ctx
     torture_ntt_log
     torture_ntt_utils
