@@ -242,7 +242,7 @@ The **default adapter** is resolved, from highest to lowest precedence, as:
 
 `ntt_adapter_unload_all()` releases every dynamically loaded module and clears the resolution cache and the explicit override.
 
-The `examples/adapters/naive` module demonstrates a fully external Adapter: it includes only the public headers, links nothing, reads the configuration through the injected Core API, and is tested by `examples/module_example.c`.
+The `examples/adapters/naive` module demonstrates a fully external Adapter: it includes only the public headers, links nothing, reads the configuration through the injected Core API, and is exercised by `examples/ntt_example_oneshot` and `examples/ntt_example_stepwise`, which let the user pick any adapter (built-in or module) and default to the resolved library default.
 
 ---
 

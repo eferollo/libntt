@@ -43,6 +43,10 @@ option(NTT_ENABLE_LOGGING
 
 install(FILES LICENSE DESTINATION share/licenses/libntt)
 
+# Shared libraries emitted for the run-time loading examples go into the
+# examples build directory.
+set(NTT_MODULE_OUTPUT_DIR "${CMAKE_BINARY_DIR}/examples/modules")
+
 # Adapter module helper.
 #
 # Builds a standalone shared library that implements an NTT adapter and links
@@ -55,8 +59,8 @@ function(ntt_adapter_module name)
         C_VISIBILITY_PRESET hidden
         POSITION_INDEPENDENT_CODE ON
         OUTPUT_NAME "ntt_adapter_${name}"
-        LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/modules
-        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/modules)
+        LIBRARY_OUTPUT_DIRECTORY ${NTT_MODULE_OUTPUT_DIR}
+        RUNTIME_OUTPUT_DIRECTORY ${NTT_MODULE_OUTPUT_DIR})
     target_include_directories(ntt_adapter_${name} PRIVATE
         ${CMAKE_SOURCE_DIR}/include)
     target_compile_definitions(ntt_adapter_${name} PRIVATE
