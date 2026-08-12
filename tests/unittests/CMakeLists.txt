@@ -8,6 +8,7 @@ set(NTT_UNIT_TESTS
     torture_ntt_core
     torture_ntt_ctx
     torture_ntt_log
+    torture_ntt_module
     torture_ntt_utils
     torture_scalar_barrett
     torture_scalar_montgomery
