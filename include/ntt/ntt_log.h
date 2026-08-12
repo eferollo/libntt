@@ -37,12 +37,17 @@ typedef enum {
 /**
  * @brief Sets the runtime logging threshold.
  *
- * Messages with a severity than the configured level are discarded.
+ * Messages with a higher severity than the configured level are discarded,
+ * so selecting a level keeps it and every level below it.
  *
  * @param[in] level Logging severity threshold.
  *
  * @note The default logging level is NTT_LOG_ERROR. Out-of-range values
  * are discarded, leaving the currently configured level unchanged.
+ *
+ * @note Unless this function is called, the threshold is taken from the
+ * NTT_LOG_LEVEL environment variable (values: none, error, info, debug).
+ * A call to ntt_log_set_level() overrides the environment variable.
  *
  * @see ntt_log_level
  */

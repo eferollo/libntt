@@ -33,6 +33,14 @@
  */
 static _Atomic ntt_log_level g_ntt_log_level = NTT_LOG_ERROR;
 
+/**
+ * Tracks whether ntt_log_set_level() has been called. An explicit call always
+ * wins over the NTT_LOG_LEVEL environment variable. Otherwise the threshold is
+ * re-evaluated from the environment on every write, so a caller can raise or
+ * lower verbosity without reconfiguring the library.
+ */
+static _Atomic int g_ntt_log_explicit = NTT_LOG_NONE;
+
 void ntt_log_set_level(ntt_log_level level)
 {
     switch(level) {
@@ -45,6 +53,29 @@ void ntt_log_set_level(ntt_log_level level)
             return;
     }
     atomic_store(&g_ntt_log_level, level);
+    atomic_store(&g_ntt_log_explicit, NTT_LOG_ERROR);
+}
+
+/**
+ * @brief Maps the NTT_LOG_LEVEL environment variable to a severity level.
+ *
+ * Accepts "none", "error", "info", or "debug" (case-sensitive, matching the
+ * ntt_test_set_log_level() helper). Unset or unrecognized values fall back to
+ * the default NTT_LOG_ERROR threshold.
+ */
+static ntt_log_level ntt_log_env_level(void)
+{
+    const char *level = getenv("NTT_LOG_LEVEL");
+    if (level == NULL) {
+        return NTT_LOG_ERROR;
+    } else if (strcmp(level, "none") == 0) {
+        return NTT_LOG_NONE;
+    } else if (strcmp(level, "info") == 0) {
+        return NTT_LOG_INFO;
+    } else if (strcmp(level, "debug") == 0) {
+        return NTT_LOG_DEBUG;
+    }
+    return NTT_LOG_ERROR;
 }
 
 static const char *level_str(ntt_log_level level)
@@ -83,16 +114,23 @@ void ntt__log_write(ntt_log_level level,
                     const char *fmt,
                     ...)
 {
-    if (level == NTT_LOG_NONE || level > atomic_load(&g_ntt_log_level)) {
+    const ntt_log_level threshold =
+        atomic_load(&g_ntt_log_explicit) ? atomic_load(&g_ntt_log_level)
+                                         : ntt_log_env_level();
+    if (level == NTT_LOG_NONE || level > threshold) {
         return;
     }
 
     struct timespec ts;
-    clock_gettime(CLOCK_REALTIME, &ts);
-
-    /* Convert the timestamp to local time. */
     struct tm tm_info;
+
+#if defined(_WIN32)
+    timespec_get(&ts, TIME_UTC);
+    localtime_s(&tm_info, &ts.tv_sec);
+#else
+    clock_gettime(CLOCK_REALTIME, &ts);
     localtime_r(&ts.tv_sec, &tm_info);
+#endif
 
     char timebuf[16] = {0};
     strftime(timebuf, sizeof(timebuf), "%H:%M:%S", &tm_info);
