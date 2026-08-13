@@ -99,3 +99,29 @@ endif()
 if(NTT_BUILD_EXAMPLES)
     add_subdirectory(examples)
 endif()
+
+# ---------------------------------------------------------------------------
+# Documentation
+# ---------------------------------------------------------------------------
+
+find_package(Doxygen QUIET)
+
+if(DOXYGEN_FOUND)
+    add_custom_target(docs
+        COMMAND ${DOXYGEN_EXECUTABLE} ${CMAKE_SOURCE_DIR}/Doxyfile
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        COMMENT "Generating HTML documentation in docs/html"
+        VERBATIM)
+endif()
+
+# ---------------------------------------------------------------------------
+# Uninstall
+# ---------------------------------------------------------------------------
+
+configure_file(
+    ${CMAKE_SOURCE_DIR}/cmake/uninstall.cmake.in
+    ${CMAKE_BINARY_DIR}/uninstall.cmake
+    @ONLY)
+
+add_custom_target(uninstall
+    COMMAND ${CMAKE_COMMAND} -P ${CMAKE_BINARY_DIR}/uninstall.cmake)

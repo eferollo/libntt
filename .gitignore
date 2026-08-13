@@ -1,2 +1,5 @@
 build/
 .cache/
+docs/html/
+docs/tags.xml
+CMakeFiles/
