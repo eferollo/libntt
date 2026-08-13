@@ -45,3 +45,13 @@ if(NTT_ENABLE_LOGGING)
 endif()
 
 add_library(ntt::ntt ALIAS ntt)
+
+include(GNUInstallDirs)
+
+install(TARGETS ntt
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+)
+
+install(DIRECTORY ${CMAKE_SOURCE_DIR}/include/ntt
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+)
