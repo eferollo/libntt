@@ -14,6 +14,7 @@ function(ntt_cmocka_unit name)
     cmake_parse_arguments(ARG "" "" "SOURCES;INCLUDE_DIRS" ${ARGN})
 
     add_executable(${name}
+        ${CMAKE_SOURCE_DIR}/tests/common/test_common.c
         ${ARG_SOURCES}
     )
 

@@ -86,6 +86,24 @@ static inline uint32_t ntt_test_prng_next_u32(uint64_t *state)
     return (uint32_t)ntt_test_prng_next_u64(state);
 }
 
+/**
+ * @brief Sets or removes an environment variable for the duration of a test.
+ *
+ * Portable wrapper around setenv()/unsetenv() on Windows. Implemented in
+ * test_common.c, where the feature-test macros for the POSIX names are
+ * defined. Return values are deliberately ignored.
+ *
+ * @param[in] name  Variable name.
+ * @param[in] value NULL to remove the variable, otherwise its new value.
+ */
+void test_set_env(const char *name, const char *value);
+
+/** @brief Removes @p name from the environment.
+ *
+ * @param[in] name  Variable name.
+ */
+void test_unset_env(const char *name);
+
 #ifdef __cplusplus
 }
 #endif

@@ -34,7 +34,9 @@
  * @brief Resolves the global NTT configuration file path.
  *
  * Returns the NTT_CONFIG_FILE environment variable when it is set and
- * non-empty. Otherwise returns $HOME/.config/libntt/ntt.conf.
+ * non-empty. Otherwise returns $HOME/.config/libntt/ntt.conf. On Windows,
+ * where HOME is not set reliably, USERPROFILE (with HOMEDRIVE + HOMEPATH as a
+ * legacy fallback) is consulted first, e.g., %USERPROFILE%\.config\libntt.
  *
  * @param[out] buf Buffer receiving the NUL-terminated path.
  * @param[in]  capacity Size of @p buf in bytes.
@@ -63,9 +65,41 @@ bool ntt__config_default_path(char *buf, size_t capacity)
     }
 
     home = getenv("HOME");
+#ifdef _WIN32
+    if (home == NULL || home[0] == '\0') {
+        /*
+         * Windows does not set HOME consistently: USERPROFILE is the norm,
+         * HOMEDRIVE + HOMEPATH the fallback for legacy profiles.
+         */
+        home = getenv("USERPROFILE");
+        if (home == NULL || home[0] == '\0') {
+            const char *drive = getenv("HOMEDRIVE");
+            const char *dir = getenv("HOMEPATH");
+            if (drive != NULL && dir != NULL && drive[0] != '\0' &&
+                dir[0] != '\0') {
+                len = (size_t)snprintf(buf,
+                                       capacity,
+                                       "%s%s/.config/libntt/ntt.conf",
+                                       drive,
+                                       dir);
+                if (len >= capacity) {
+                    NTT_LOG(NTT_LOG_ERROR,
+                            "default config path does not fit in buffer "
+                            "(len=%zu)",
+                            len);
+                    return false;
+                }
+                NTT_LOG(NTT_LOG_INFO, "using default config file: %s", buf);
+                return true;
+            }
+            home = NULL;
+        }
+    }
+#endif
     if (home == NULL || home[0] == '\0') {
         NTT_LOG(NTT_LOG_ERROR,
-                "HOME is not set. Cannot resolve default config path");
+                "no home directory configured. Cannot resolve default config "
+                "path");
         return false;
     }
 

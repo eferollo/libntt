@@ -3,6 +3,11 @@
 #include "ntt_cfg_file.c"
 #include "test_common.h"
 
+#ifdef _WIN32
+#define NOMINMAX
+#include <windows.h>
+#endif
+
 /** @brief Test path resolution and every env/buffer failure mode. */
 static void torture_ntt_cfg_default_path(void **state)
 {
@@ -12,43 +17,50 @@ static void torture_ntt_cfg_default_path(void **state)
     int rc;
 
     /* NTT_CONFIG_FILE wins over HOME when it fits the buffer. */
-    setenv("NTT_CONFIG_FILE", "/tmp/my_ntt.conf", 1);
-    setenv("HOME", "/ignored", 1);
+    test_set_env("NTT_CONFIG_FILE", "/tmp/my_ntt.conf");
+    test_set_env("HOME", "/ignored");
     rc = ntt__config_default_path(buf, sizeof(buf));
     assert_true(rc);
     assert_string_equal(buf, "/tmp/my_ntt.conf");
-    unsetenv("NTT_CONFIG_FILE");
-    unsetenv("HOME");
+    test_unset_env("NTT_CONFIG_FILE");
+    test_unset_env("HOME");
 
     /* An empty NTT_CONFIG_FILE falls back to the HOME default. */
-    setenv("NTT_CONFIG_FILE", "", 1);
-    setenv("HOME", "/home/user", 1);
+    test_set_env("NTT_CONFIG_FILE", "");
+    test_set_env("HOME", "/home/user");
     rc = ntt__config_default_path(buf, sizeof(buf));
     assert_true(rc);
     assert_string_equal(buf, "/home/user/.config/libntt/ntt.conf");
-    unsetenv("NTT_CONFIG_FILE");
-    unsetenv("HOME");
+    test_unset_env("NTT_CONFIG_FILE");
+    test_unset_env("HOME");
 
     /* No NTT_CONFIG_FILE and no HOME cannot be resolved. */
+#ifdef _WIN32
+    /* The Windows profile fallback has to be cleared too, otherwise the
+     * USERPROFILE/HOMEDRIVE+HOMEPATH branch resolves a path. */
+    test_unset_env("USERPROFILE");
+    test_unset_env("HOMEDRIVE");
+    test_unset_env("HOMEPATH");
+#endif
     rc = ntt__config_default_path(buf, sizeof(buf));
     assert_false(rc);
 
     /* NTT_CONFIG_FILE that does not fit the buffer is rejected. */
-    setenv("NTT_CONFIG_FILE", "1234567890abcdef", 1); /* len == cap */
+    test_set_env("NTT_CONFIG_FILE", "1234567890abcdef"); /* len == cap */
     rc = ntt__config_default_path(small, sizeof(small));
     assert_false(rc);
     /* len == cap-1 fits. */
-    setenv("NTT_CONFIG_FILE", "1234567890abcde", 1);
+    test_set_env("NTT_CONFIG_FILE", "1234567890abcde");
     rc = ntt__config_default_path(small, sizeof(small));
     assert_true(rc);
     assert_string_equal(small, "1234567890abcde");
-    unsetenv("NTT_CONFIG_FILE");
+    test_unset_env("NTT_CONFIG_FILE");
 
     /* A HOME too long for the buffer is rejected. */
-    setenv("HOME", "/home/this/name/is/way/too/long", 1);
+    test_set_env("HOME", "/home/this/name/is/way/too/long");
     rc = ntt__config_default_path(small, sizeof(small));
     assert_false(rc);
-    unsetenv("HOME");
+    test_unset_env("HOME");
 }
 
 /** @brief Test every parse_line path against the static parser. */
@@ -172,18 +184,42 @@ static void torture_ntt_cfg_parse_line(void **state)
 /** @brief Writes content to a unique temporary file and returns its path. */
 static char *write_cfg_file(const char *content)
 {
+    const char *name = NULL;
+    FILE *fp = NULL;
+    size_t n;
+    char *out = NULL;
+
+#ifdef _WIN32
+    char path[MAX_PATH] = {0};
+    /*
+     * GetTempFileNameA() creates the file in "." (the working directory) with
+     * a unique name. Unlike _mktemp_s it is available on both MSVC and MinGW.
+     * uUnique = 0 asks the system to pick a fresh name.
+     */
+    if (GetTempFileNameA(".", "ntt", 0, path) == 0) {
+        return NULL;
+    }
+    name = path;
+    fp = fopen(path, "w");
+#else
     char template[] = "/tmp/ntt_cfg_unit_XXXXXX";
     int fd = mkstemp(template);
     assert_true(fd >= 0);
-
-    FILE *fp = fdopen(fd, "w");
+    name = template;
+    fp = fdopen(fd, "w");
+#endif
     assert_non_null(fp);
     if (content != NULL) {
         fputs(content, fp);
     }
     assert_int_equal(fclose(fp), 0);
 
-    return strdup(template);
+    n = strlen(name) + 1;
+    out = calloc(n, sizeof(char));
+    if (out != NULL) {
+        memcpy(out, name, n);
+    }
+    return out;
 }
 
 /** @brief Removes a file created by write_cfg_file() and frees the path. */
