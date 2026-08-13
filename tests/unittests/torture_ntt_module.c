@@ -88,7 +88,29 @@ void ntt__dlclose(void *handle)
 
 const char *ntt__dl_extension(void)
 {
+#if defined(_WIN32)
+    return ".dll";
+#else
     return ".so";
+#endif
+}
+
+const char *ntt__dl_prefix(void)
+{
+#if defined(_WIN32)
+    return "";
+#else
+    return "lib";
+#endif
+}
+
+const char *ntt__dl_separator(void)
+{
+#if defined(_WIN32)
+    return "\\";
+#else
+    return "/";
+#endif
 }
 
 /* Descriptor handed out by a successful module entry point. */
@@ -299,8 +321,13 @@ static void torture_ntt_module_load_from_dir_success(void **state)
     assert_ptr_equal(adapter, &mock_module_adapter);
 
     /* The requested library path and symbol are used. */
+#if defined(_WIN32)
+    assert_string_equal(mock_dlopen_path,
+                        "/tmp/ntt/adapters\\ntt_adapter_ext.dll");
+#else
     assert_string_equal(mock_dlopen_path,
                         "/tmp/ntt/adapters/libntt_adapter_ext.so");
+#endif
     assert_string_equal(mock_dlsym_name, NTT_ADAPTER_MODULE_ENTRY);
 
     /* The handle is kept resident and not closed. */

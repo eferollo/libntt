@@ -241,6 +241,35 @@ static void torture_ntt_dl_extension(void **state)
 #endif
 }
 
+/** @brief ntt__dl_prefix(): the platform shared-library filename prefix. */
+static void torture_ntt_dl_prefix(void **state)
+{
+    (void)state;
+    const char *prefix = ntt__dl_prefix();
+
+    assert_non_null(prefix);
+#if defined(_WIN32)
+    assert_string_equal(prefix, "");
+#else
+    assert_string_equal(prefix, "lib");
+#endif
+}
+
+/** @brief ntt__dl_separator(): the platform path separator. */
+static void torture_ntt_dl_separator(void **state)
+{
+    (void)state;
+    const char *separator = ntt__dl_separator();
+
+    assert_non_null(separator);
+    assert_int_equal(strlen(separator), 1);
+#if defined(_WIN32)
+    assert_string_equal(separator, "\\");
+#else
+    assert_string_equal(separator, "/");
+#endif
+}
+
 int main(void)
 {
     const struct CMUnitTest tests[] = {
@@ -251,6 +280,8 @@ int main(void)
         cmocka_unit_test(torture_ntt_core_typed_accessors),
         cmocka_unit_test(torture_ntt_dl_open_close),
         cmocka_unit_test(torture_ntt_dl_extension),
+        cmocka_unit_test(torture_ntt_dl_prefix),
+        cmocka_unit_test(torture_ntt_dl_separator),
     };
 
     ntt_test_set_log_level();

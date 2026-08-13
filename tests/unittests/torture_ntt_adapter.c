@@ -2,7 +2,12 @@
 
 #include "ntt_adapter.c"
 #include "test_common.h"
+#ifdef _WIN32
+#include <process.h>
+#define getpid _getpid
+#else
 #include <unistd.h>
+#endif
 
 #define TEST_NAME_OVERSIZE 200
 #define TEST_DIR_OVERSIZE  5000
@@ -51,9 +56,9 @@ const ntt_adapter *ntt_adapter_scalar_toy(void)
 /** @brief Clears the configuration environment and the cached default. */
 static void reset_env(void)
 {
-    unsetenv("NTT_CONFIG_FILE");
-    unsetenv("NTT_ADAPTER_MODULE_DIR");
-    unsetenv("HOME");
+    test_unset_env("NTT_CONFIG_FILE");
+    test_unset_env("NTT_ADAPTER_MODULE_DIR");
+    test_unset_env("HOME");
     ntt__adapter_reset_default();
 }
 
@@ -435,13 +440,11 @@ static void torture_ntt_adapter_get_default(void **state)
     assert_int_equal(rc, expected);
     rc = fclose(fp);
     assert_int_equal(rc, 0);
-    rc = setenv("NTT_CONFIG_FILE", path, 1);
-    assert_int_equal(rc, 0);
+    test_set_env("NTT_CONFIG_FILE", path);
     adapter = ntt_adapter_get_default();
     name = ntt_adapter_get_name(adapter);
     assert_string_equal(name, "mock_minimal");
-    rc = unsetenv("NTT_CONFIG_FILE");
-    assert_int_equal(rc, 0);
+    test_unset_env("NTT_CONFIG_FILE");
     rc = remove(path);
     assert_int_equal(rc, 0);
 }
