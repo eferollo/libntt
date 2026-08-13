@@ -157,16 +157,19 @@ const ntt_adapter *ntt__module_load_from_dir(const char *module_dir,
     } entry;
     const ntt_adapter *adapter = NULL;
 
-    len = strlen(module_dir) + strlen("/libntt_adapter_") + strlen(name) +
+    len = strlen(module_dir) + strlen(ntt__dl_separator()) +
+          strlen(ntt__dl_prefix()) + strlen("ntt_adapter_") + strlen(name) +
           strlen(ntt__dl_extension()) + 1;
-    path = calloc(len, sizeof(char *));
+    path = calloc(len, 1);
     if (path == NULL) {
         return NULL;
     }
     snprintf(path,
              len,
-             "%s/libntt_adapter_%s%s",
+             "%s%s%sntt_adapter_%s%s",
              module_dir,
+             ntt__dl_separator(),
+             ntt__dl_prefix(),
              name,
              ntt__dl_extension());
 

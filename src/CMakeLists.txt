@@ -32,7 +32,11 @@ target_include_directories(ntt
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/common/headers
 )
 
-target_compile_options(ntt PRIVATE -Wall -Wextra -Wpedantic)
+if(MSVC)
+    target_compile_options(ntt PRIVATE /W4)
+else()
+    target_compile_options(ntt PRIVATE -Wall -Wextra -Wpedantic)
+endif()
 
 target_link_libraries(ntt PRIVATE ${CMAKE_DL_LIBS})
 

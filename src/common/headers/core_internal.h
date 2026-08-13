@@ -30,5 +30,7 @@ void *ntt__dlsym(void *handle, const char *name);
 void ntt__dlclose(void *handle);
 
 const char *ntt__dl_extension(void);
+const char *ntt__dl_prefix(void);
+const char *ntt__dl_separator(void);
 
 #endif /* NTT_CORE_INTERNAL_H */

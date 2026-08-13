@@ -63,6 +63,26 @@ const char *ntt__dl_extension(void)
     return NTT_DL_EXT;
 }
 
+/** @brief Dynamic library filename prefix ("lib" on Unix, "" on Windows). */
+const char *ntt__dl_prefix(void)
+{
+#if defined(_WIN32)
+    return "";
+#else
+    return "lib";
+#endif
+}
+
+/** @brief Path separator ("/" on Unix, "\\" on Windows). */
+const char *ntt__dl_separator(void)
+{
+#if defined(_WIN32)
+    return "\\";
+#else
+    return "/";
+#endif
+}
+
 static const ntt_dispatch ntt__core_ops[] = {
     {
         NTT_FUNC_CONFIG_GET_MODULUS,

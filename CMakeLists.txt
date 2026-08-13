@@ -65,8 +65,12 @@ function(ntt_adapter_module name)
         ${CMAKE_SOURCE_DIR}/include)
     target_compile_definitions(ntt_adapter_${name} PRIVATE
         NTT_MODULE_BUILD)
-    target_compile_options(ntt_adapter_${name} PRIVATE
-        -Wall -Wextra -Wpedantic)
+    if(MSVC)
+        target_compile_options(ntt_adapter_${name} PRIVATE /W4)
+    else()
+        target_compile_options(ntt_adapter_${name} PRIVATE
+            -Wall -Wextra -Wpedantic)
+    endif()
 endfunction()
 
 # ---------------------------------------------------------------------------
