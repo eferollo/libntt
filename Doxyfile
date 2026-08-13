@@ -1,0 +1,46 @@
+# Doxyfile for the NTT Library.
+#
+# Generates an HTML API reference covering the public headers in include/ntt/
+# plus the implementation sources and internal headers in src/.
+#
+# Usage:
+#   doxygen Doxyfile
+# then open docs/html/index.html.
+
+PROJECT_NAME           = "NTT Library"
+PROJECT_BRIEF          = "A portable Number Theoretic Transform library with pluggable Adapter implementations"
+OUTPUT_DIRECTORY       = docs
+CREATE_SUBDIRS         = NO
+
+INPUT                  = include/ntt \
+                         src \
+                         README.md \
+                         INSTALL.md \
+                         docs/CONFIGURATION.md \
+                         docs/ARCHITECTURE.md
+RECURSIVE              = YES
+FILE_PATTERNS          = *.h \
+                         *.c \
+                         *.md
+
+# Markdown files in docs/ (*.md) become pages automatically.
+# The README is used as the generated site's index.
+USE_MDFILE_AS_MAINPAGE = README.md
+EXCLUDE_PATTERNS       = */build/*
+
+EXTRACT_ALL            = YES
+EXTRACT_STATIC         = YES
+EXTRACT_PRIVATE        = YES
+EXTRACT_LOCAL_CLASSES  = YES
+
+GENERATE_HTML          = YES
+HTML_OUTPUT            = html
+GENERATE_TREEVIEW      = YES
+SOURCE_BROWSER         = YES
+INLINE_SOURCES         = NO
+STRIP_CODE_COMMENTS    = YES
+
+GENERATE_LATEX         = NO
+
+QUIET                  = NO
+WARNINGS               = YES
