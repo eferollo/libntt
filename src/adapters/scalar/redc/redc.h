@@ -23,39 +23,13 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-/**
- * @brief Computes the high 64 bits of a 64-by-64-bit multiplication.
- *
- * Returns the upper half of the mathematical 128-bit product @p a*@p b using
- * only standard C11 64-bit arithmetic. The operands are decomposed into 32-bit
- * limbs, avoiding any dependency on a compiler-provided 128-bit integer type.
- *
- * @param[in] a First 64-bit operand.
- * @param[in] b Second 64-bit operand.
- *
- * @return The upper 64 bits of the mathematical product @p a*@p b.
- */
-static inline uint64_t scalar_mulhi_u64(uint64_t a, uint64_t b)
-{
-    uint64_t a0 = (uint32_t)a;
-    uint64_t a1 = a >> 32;
-    uint64_t b0 = (uint32_t)b;
-    uint64_t b1 = b >> 32;
+#include "wide_int.h"
 
-    uint64_t p0 = a0 * b0;
-    uint64_t p1 = a0 * b1;
-    uint64_t p2 = a1 * b0;
-    uint64_t p3 = a1 * b1;
-
-    uint64_t middle = (p0 >> 32) + (uint32_t)p1 + (uint32_t)p2;
-
-    return p3 + (p1 >> 32) + (p2 >> 32) + (middle >> 32);
-}
-
-/* BARRETT REDUCTION
+/* 
+ * BARRETT REDUCTION
  * - single-word path (64-bit product), valid for q < 2^32.
  * - two-word path (128-bit product), valid for q <= 2^63 - 1.
- * Both are implemented without a compiler-provided 128-bit integer type.
+ * All wide products are formed through the wide primitives in wide_int.h.
  */
 
 uint64_t ntt_scalar_barrett_mu(uint32_t q);

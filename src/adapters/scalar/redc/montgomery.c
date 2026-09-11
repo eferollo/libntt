@@ -176,8 +176,8 @@ static uint64_t
 mont_reduce_64(uint64_t thi, uint64_t tlo, uint64_t q, uint64_t qinv)
 {
     uint64_t m = tlo * qinv;
-    uint64_t mhi = scalar_mulhi_u64(m, q);
-    uint64_t mlo = m * q;
+    uint64_t mhi, mlo;
+    scalar_mulwide_u64(m, q, &mhi, &mlo);
 
     uint64_t lo = tlo + mlo;
     uint64_t carry = (lo < mlo);
@@ -235,7 +235,9 @@ ntt_scalar_mont_mul(uint64_t a, uint64_t b, uint64_t q, uint64_t qinv, bool q32)
                               (uint32_t)q,
                               (uint32_t)qinv);
     }
-    return mont_reduce_64(scalar_mulhi_u64(a, b), a * b, q, qinv);
+    uint64_t hi, lo;
+    scalar_mulwide_u64(a, b, &hi, &lo);
+    return mont_reduce_64(hi, lo, q, qinv);
 }
 
 /**
@@ -275,10 +277,7 @@ uint64_t ntt_scalar_mont_encode(uint64_t a,
  *
  * @return Canonical representation of the value.
  */
-uint64_t ntt_scalar_mont_decode(uint64_t a,
-                                uint64_t q,
-                                uint64_t qinv,
-                                bool q32)
+uint64_t ntt_scalar_mont_decode(uint64_t a, uint64_t q, uint64_t qinv, bool q32)
 {
     return ntt_scalar_mont_reduce(0ull, a, q, qinv, q32);
 }

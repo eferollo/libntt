@@ -139,55 +139,8 @@ uint64_t ntt_scalar_barrett_mu(uint32_t q)
  * then differs from floor(x / q) by at most one for every x in [0, 2^128),
  * so a single conditional subtraction yields the canonical remainder.
  * Computing qhat only needs the high half of the 128x128 product, which is
- * obtained with 64x64 multiply-high/low ops and carry propagation.
+ * obtained through scalar_mulhi128_u64() from wide_int.h.
  */
-
-/**
- * @brief Computes the upper 128 bits of a 128-by-128-bit product.
- *
- * Decomposes the operands into pairs of 64-bit words and accumulates the
- * middle carries so that the two most-significant digits of the 256-bit
- * product are recovered without a native 128-bit integer type.
- *
- * @param[in] a_hi High word of the first operand.
- * @param[in] a_lo Low word of the first operand.
- * @param[in] b_hi High word of the second operand.
- * @param[in] b_lo Low word of the second operand.
- * @param[out] r_hi High word of the upper half of the product.
- * @param[out] r_lo Low word of the upper half of the product.
- */
-static void barrett_mulhi128(uint64_t a_hi,
-                             uint64_t a_lo,
-                             uint64_t b_hi,
-                             uint64_t b_lo,
-                             uint64_t *r_hi,
-                             uint64_t *r_lo)
-{
-    uint64_t c0 = scalar_mulhi_u64(a_lo, b_lo);
-    uint64_t d1 = a_lo * b_hi;
-    uint64_t d2 = scalar_mulhi_u64(a_lo, b_hi);
-    uint64_t d3 = a_hi * b_lo;
-    uint64_t d4 = scalar_mulhi_u64(a_hi, b_lo);
-    uint64_t d5 = a_hi * b_hi;
-    uint64_t d6 = scalar_mulhi_u64(a_hi, b_hi);
-
-    uint64_t s1 = c0 + d1;
-    uint64_t c1 = (s1 < c0) ? 1u : 0u;
-    uint64_t s2 = s1 + d3;
-    uint64_t c2 = (s2 < s1) ? 1u : 0u;
-    uint64_t carry1 = c1 + c2;
-
-    uint64_t m = d2 + d4;
-    uint64_t c3 = (m < d2) ? 1u : 0u;
-    uint64_t m2 = m + d5;
-    uint64_t c4 = (m2 < m) ? 1u : 0u;
-    uint64_t m3 = m2 + carry1;
-    uint64_t c5 = (m3 < m2) ? 1u : 0u;
-    uint64_t carry2 = c3 + c4 + c5;
-
-    *r_lo = m3;
-    *r_hi = d6 + carry2;
-}
 
 /* Dispatch helper for the hot multiplication/reduction path. */
 static uint64_t barrett_reduce_u128(uint64_t x_hi,
@@ -197,14 +150,15 @@ static uint64_t barrett_reduce_u128(uint64_t x_hi,
                                     uint64_t mu_lo)
 {
     uint64_t q3_hi, q3_lo;
-    barrett_mulhi128(x_hi, x_lo, mu_hi, mu_lo, &q3_hi, &q3_lo);
+    scalar_mulhi128_u64(x_hi, x_lo, mu_hi, mu_lo, &q3_hi, &q3_lo);
 
     /*
      * t = q3 * q. Since q3 <= floor(x / q), q3 * q <= x < 2^128, so the
      * true product fits in two words and neither intermediate overflows.
      */
-    uint64_t t_hi = scalar_mulhi_u64(q3_lo, q) + q3_hi * q;
-    uint64_t t_lo = q3_lo * q;
+    uint64_t t_hi, t_lo;
+    scalar_mulwide_u64(q3_lo, q, &t_hi, &t_lo);
+    t_hi += q3_hi * q;
 
     uint64_t r_lo = x_lo - t_lo;
     uint64_t borrow = (x_lo < t_lo) ? 1u : 0u;
@@ -221,13 +175,13 @@ static uint64_t barrett_reduce_u128(uint64_t x_hi,
 /**
  * @brief Computes the 128-bit Barrett reciprocal for the general path.
  *
- * Computers mu = floor(2^128 / q) as two words without performing a 128/64
- * integer division. Uses the identity
+ * Computes mu = floor(2^128 / q) as two words. On the native variant the
+ * second factor of the identity
  *
  *     floor(2^128 / q) = 2^64 * w + floor(2^64 * r / q),
  *
- * where w = floor(2^64 / q) and r = 2^64 mod q. The single-word w is derived
- * from a UINT64_MAX division and the second term by a 64-step binary long
+ * where w = floor(2^64 / q) and r = 2^64 mod q, is computed with a single
+ * extended-precision division. Elsewhere it needs a 64-step binary long
  * division of the two-word dividend (r, 0).
  *
  * @param[in]  q      Modulus, q <= 2^63 - 1.
@@ -236,6 +190,30 @@ static uint64_t barrett_reduce_u128(uint64_t x_hi,
  */
 void ntt_scalar_barrett_mu128(uint64_t q, uint64_t *mu_hi, uint64_t *mu_lo)
 {
+#if defined(__SIZEOF_INT128__)
+    uint64_t w = UINT64_MAX / q;
+    uint64_t w_rem = UINT64_MAX - w * q;
+    w += (w_rem == q - 1u);
+
+    /*
+     * r = 2^64 mod q. w * q <= 2^64, so the negation wraps to
+     * (2^64 - w*q) mod 2^64 without overflow.
+     */
+    uint64_t r = 0u - w * q;
+
+    /* mu_lo = floor(2^64 * r / q); the dividend fits in an int128. */
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wpedantic"
+#endif
+    unsigned __int128 m = ((unsigned __int128)r << 64) / q;
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
+
+    *mu_hi = w;
+    *mu_lo = (uint64_t)m;
+#else
     uint64_t w = UINT64_MAX / q;
     uint64_t w_rem = UINT64_MAX - w * q;
     w += (w_rem == q - 1u);
@@ -268,6 +246,7 @@ void ntt_scalar_barrett_mu128(uint64_t q, uint64_t *mu_hi, uint64_t *mu_lo)
 
     *mu_hi = w;
     *mu_lo = m;
+#endif
 }
 
 /**
@@ -310,7 +289,9 @@ uint64_t ntt_scalar_barrett_mul_u128(uint64_t a,
                                      uint64_t mu_hi,
                                      uint64_t mu_lo)
 {
-    return barrett_reduce_u128(scalar_mulhi_u64(a, b), a * b, q, mu_hi, mu_lo);
+    uint64_t hi, lo;
+    scalar_mulwide_u64(a, b, &hi, &lo);
+    return barrett_reduce_u128(hi, lo, q, mu_hi, mu_lo);
 }
 
 /**
