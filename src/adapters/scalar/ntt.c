@@ -168,7 +168,7 @@ bool ntt__scalar_validate_modulus(const ntt_config *config,
     /*
      * Barrett requires nothing beyond primality and the 2^63 bound already
      * enforced above. For q < 2^32 the reciprocal mu = floor(2^64/q) is
-     * computed with ntt_scalar_barrett_mu(), while larger moduli use the
+     * computed with ntt_scalar_barrett_mu_u64(), while larger moduli use the
      * two-word mu128 formulation; both hold for any supported q, so no
      * additional validation is needed here.
      */
@@ -279,11 +279,11 @@ void *ntt__scalar_adapter_setup(const ntt_config *config,
      */
     if (state->reduction == NTT_SCALAR_REDUCTION_BARRETT) {
         if (state->q32) {
-            state->barrett_mu = ntt_scalar_barrett_mu((uint32_t)q);
+            state->barrett_mu = ntt_scalar_barrett_mu_u64((uint32_t)q);
         } else {
-            ntt_scalar_barrett_mu128(q,
-                                     &state->barrett_mu_hi,
-                                     &state->barrett_mu_lo);
+            ntt_scalar_barrett_mu_u128(q,
+                                       &state->barrett_mu_hi,
+                                       &state->barrett_mu_lo);
         }
     } else {
         state->mont_r2 = ntt_scalar_mont_r2(q, state->q32);

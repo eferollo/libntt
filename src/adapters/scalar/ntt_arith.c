@@ -116,10 +116,10 @@ scalar_mul(uint64_t a, uint64_t b, const ntt_scalar_state *state)
                                    state->q32);
     }
     if (state->q32) {
-        return ntt_scalar_barrett_mul(a,
-                                      b,
-                                      (uint32_t)state->q,
-                                      state->barrett_mu);
+        return ntt_scalar_barrett_mul_u64(a,
+                                          b,
+                                          (uint32_t)state->q,
+                                          state->barrett_mu);
     }
     return ntt_scalar_barrett_mul_u128(a,
                                        b,
@@ -291,10 +291,10 @@ ntt__scalar_modpow(uint64_t base, uint64_t exp, const ntt_scalar_state *state)
                                       state->q32);
     }
     if (state->q32) {
-        return ntt_scalar_barrett_modpow(base,
-                                         exp,
-                                         (uint32_t)state->q,
-                                         state->barrett_mu);
+        return ntt_scalar_barrett_modpow_u64(base,
+                                             exp,
+                                             (uint32_t)state->q,
+                                             state->barrett_mu);
     }
     return ntt_scalar_barrett_modpow_u128(base,
                                           exp,

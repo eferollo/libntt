@@ -68,7 +68,8 @@ uint64_t ntt_scalar_barrett_reduce_u64(uint64_t x, uint32_t q, uint64_t mu)
  *
  * @return The canonical residue @f$(a\cdot b)\bmod q@f$.
  */
-uint64_t ntt_scalar_barrett_mul(uint64_t a, uint64_t b, uint32_t q, uint64_t mu)
+uint64_t
+ntt_scalar_barrett_mul_u64(uint64_t a, uint64_t b, uint32_t q, uint64_t mu)
 {
     return ntt_scalar_barrett_reduce_u64(a * b, q, mu);
 }
@@ -88,17 +89,19 @@ uint64_t ntt_scalar_barrett_mul(uint64_t a, uint64_t b, uint32_t q, uint64_t mu)
  *
  * @return The canonical residue @f$base^{exp}\bmod q@f$.
  */
-uint64_t
-ntt_scalar_barrett_modpow(uint64_t base, uint64_t exp, uint32_t q, uint64_t mu)
+uint64_t ntt_scalar_barrett_modpow_u64(uint64_t base,
+                                       uint64_t exp,
+                                       uint32_t q,
+                                       uint64_t mu)
 {
     uint64_t result = 1;
     base = ntt_scalar_barrett_reduce_u64(base, q, mu);
 
     while (exp != 0) {
         if (exp & 1u) {
-            result = ntt_scalar_barrett_mul(result, base, q, mu);
+            result = ntt_scalar_barrett_mul_u64(result, base, q, mu);
         }
-        base = ntt_scalar_barrett_mul(base, base, q, mu);
+        base = ntt_scalar_barrett_mul_u64(base, base, q, mu);
         exp >>= 1;
     }
     return result;
@@ -117,7 +120,7 @@ ntt_scalar_barrett_modpow(uint64_t base, uint64_t exp, uint32_t q, uint64_t mu)
  *
  * @return Barrett reciprocal @f$\mu = \lfloor 2^{64}/q \rfloor@f$.
  */
-uint64_t ntt_scalar_barrett_mu(uint32_t q)
+uint64_t ntt_scalar_barrett_mu_u64(uint32_t q)
 {
     uint64_t quotient = UINT64_MAX / q;
     uint64_t remainder = UINT64_MAX - quotient * q;
@@ -188,7 +191,7 @@ static uint64_t barrett_reduce_u128(uint64_t x_hi,
  * @param[out] mu_hi  High word of floor(2^128 / q).
  * @param[out] mu_lo  Low word of floor(2^128 / q).
  */
-void ntt_scalar_barrett_mu128(uint64_t q, uint64_t *mu_hi, uint64_t *mu_lo)
+void ntt_scalar_barrett_mu_u128(uint64_t q, uint64_t *mu_hi, uint64_t *mu_lo)
 {
 #if defined(__SIZEOF_INT128__)
     uint64_t w = UINT64_MAX / q;

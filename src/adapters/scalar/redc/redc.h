@@ -25,23 +25,25 @@
 
 #include "wide_int.h"
 
-/* 
+/*
  * BARRETT REDUCTION
  * - single-word path (64-bit product), valid for q < 2^32.
  * - two-word path (128-bit product), valid for q <= 2^63 - 1.
  * All wide products are formed through the wide primitives in wide_int.h.
  */
 
-uint64_t ntt_scalar_barrett_mu(uint32_t q);
+uint64_t ntt_scalar_barrett_mu_u64(uint32_t q);
 uint64_t ntt_scalar_barrett_reduce_u64(uint64_t x, uint32_t q, uint64_t mu);
 uint64_t
-ntt_scalar_barrett_mul(uint64_t a, uint64_t b, uint32_t q, uint64_t mu);
-uint64_t
-ntt_scalar_barrett_modpow(uint64_t base, uint64_t exp, uint32_t q, uint64_t mu);
+ntt_scalar_barrett_mul_u64(uint64_t a, uint64_t b, uint32_t q, uint64_t mu);
+uint64_t ntt_scalar_barrett_modpow_u64(uint64_t base,
+                                       uint64_t exp,
+                                       uint32_t q,
+                                       uint64_t mu);
 
 /* Two-word (general-path) Barrett, for q <= 2^63 - 1. */
 
-void ntt_scalar_barrett_mu128(uint64_t q, uint64_t *mu_hi, uint64_t *mu_lo);
+void ntt_scalar_barrett_mu_u128(uint64_t q, uint64_t *mu_hi, uint64_t *mu_lo);
 uint64_t ntt_scalar_barrett_reduce_u128(uint64_t x_hi,
                                         uint64_t x_lo,
                                         uint64_t q,
