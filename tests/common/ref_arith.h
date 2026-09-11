@@ -22,37 +22,33 @@
 
 #include <stdint.h>
 
+#if defined(_MSC_VER) && defined(_M_X64)
+#include <intrin.h>
+#endif
+
 /*
  * Shared reference arithmetic for differential tests.
  *
  * The library deliberately avoids 128-bit types in its portable paths (e.g.
  * the shift-and-add mulmod in ntt_utils.c), so the test oracle must be
- * independent of the code under test. Compilers that provide __int128 are the
- * primary reference. Toolchains without it (e.g., MSVC) fall back to fully
- * portable 64-bit implementations. The fallbacks are slow but obviously
- * correct, and they keep differential coverage running on every toolchain
- * instead of silently skipping it.
+ * independent of the code under test. It is provided in three mutually
+ * exclusive variants, selected at compile time:
+ *
+ * - native: compilers that define __SIZEOF_INT128__ (GCC, Clang) reduce
+ *   the 128-bit product directly.
+ * - intrinsic: on x64 MSVC the _umul128 / __umulh intrinsics reach the
+ *   same single 64x64 -> 128-bit multiply.
+ * - decomposed: everywhere else (e.g., 32-bit MSVC) falls back to fully
+ *   portable 64-bit implementations.
+ *
+ * The fallbacks are slow but obviously correct, and they keep differential
+ * coverage running on every toolchain instead of silently skipping it.
  */
 
-#if defined(__SIZEOF_INT128__)
-
-static inline uint64_t ntt_test_ref_add_u64(uint64_t a, uint64_t b, uint64_t q)
-{
-    return (uint64_t)(((unsigned __int128)a + b) % q);
-}
-
-static inline uint64_t ntt_test_ref_mul_u64(uint64_t a, uint64_t b, uint64_t q)
-{
-    return (uint64_t)(((unsigned __int128)a * b) % q);
-}
-
-static inline uint64_t ntt_test_ref_mulhi_u64(uint64_t a, uint64_t b)
-{
-    return (uint64_t)(((unsigned __int128)a * b) >> 64);
-}
-
-#else /* !defined(__SIZEOF_INT128__) */
-
+/*
+ * Shift-and-add reduction, shared by the intrinsic and decomposed variants:
+ * both have to reduce an arbitrary 128-bit value modulo q word by word.
+ */
 static inline uint64_t ntt_test_ref_addmod(uint64_t a, uint64_t b, uint64_t q)
 {
     /* a, b in [0, q): the single subtraction is exact because a + b < 2q. */
@@ -74,6 +70,45 @@ ntt_test_ref_reduce128(uint64_t hi, uint64_t lo, uint64_t q)
     }
     return r;
 }
+
+#if defined(__SIZEOF_INT128__) /* native variant */
+
+static inline uint64_t ntt_test_ref_add_u64(uint64_t a, uint64_t b, uint64_t q)
+{
+    return (uint64_t)(((unsigned __int128)a + b) % q);
+}
+
+static inline uint64_t ntt_test_ref_mul_u64(uint64_t a, uint64_t b, uint64_t q)
+{
+    return (uint64_t)(((unsigned __int128)a * b) % q);
+}
+
+static inline uint64_t ntt_test_ref_mulhi_u64(uint64_t a, uint64_t b)
+{
+    return (uint64_t)(((unsigned __int128)a * b) >> 64);
+}
+
+#elif defined(_MSC_VER) && defined(_M_X64) /* intrinsic variant */
+
+static inline uint64_t ntt_test_ref_add_u64(uint64_t a, uint64_t b, uint64_t q)
+{
+    uint64_t s = a + b;
+    return ntt_test_ref_reduce128((uint64_t)(s < a), s, q);
+}
+
+static inline uint64_t ntt_test_ref_mul_u64(uint64_t a, uint64_t b, uint64_t q)
+{
+    uint64_t hi;
+    uint64_t lo = _umul128(a, b, &hi);
+    return ntt_test_ref_reduce128(hi, lo, q);
+}
+
+static inline uint64_t ntt_test_ref_mulhi_u64(uint64_t a, uint64_t b)
+{
+    return __umulh(a, b);
+}
+
+#else /* decomposed variant */
 
 static inline uint64_t ntt_test_ref_add_u64(uint64_t a, uint64_t b, uint64_t q)
 {
@@ -126,7 +161,7 @@ static inline uint64_t ntt_test_ref_mulhi_u64(uint64_t a, uint64_t b)
     return hi;
 }
 
-#endif /* __SIZEOF_INT128__ */
+#endif /* ntt_test_ref_* variant selection */
 
 static inline uint64_t
 ntt_test_ref_modpow_u64(uint64_t base, uint64_t exp, uint64_t q)

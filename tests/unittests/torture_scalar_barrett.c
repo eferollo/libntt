@@ -157,28 +157,66 @@ static void torture_ntt_scalar_barrett_mu_negative(void **state)
     assert_int_equal(rc, UINT64_MAX / UINT32_MAX);
 }
 
+/*
+ * Boundary operands for the wide-multiplication differential tests: zero,
+ * one, 32-bit word boundaries and the high/low 64-bit extremes.
+ */
+static const uint64_t MULHI_EDGE[] = {
+    0,
+    1,
+    2,
+    0xFFFFFFFFu,
+    0x100000000ull,
+    0x0000000100000001ull,
+    0x7FFFFFFFFFFFFFFFull,
+    0x8000000000000000ull,
+    0xFFFFFFFF00000000ull,
+    UINT64_MAX,
+};
+#define MULHI_EDGE_COUNT (sizeof(MULHI_EDGE) / sizeof(MULHI_EDGE[0]))
+
+/** @brief Reference upper 128 bits of a 128-by-128-bit product. */
+static void ref_mulhi128(uint64_t a_hi,
+                         uint64_t a_lo,
+                         uint64_t b_hi,
+                         uint64_t b_lo,
+                         uint64_t *r_hi,
+                         uint64_t *r_lo)
+{
+    uint64_t c = ntt_test_ref_mulhi_u64(a_lo, b_lo);
+    uint64_t d_hi = ntt_test_ref_mulhi_u64(a_lo, b_hi);
+    uint64_t d_lo = a_lo * b_hi;
+    uint64_t e_hi = ntt_test_ref_mulhi_u64(a_hi, b_lo);
+    uint64_t e_lo = a_hi * b_lo;
+    uint64_t f_hi = ntt_test_ref_mulhi_u64(a_hi, b_hi);
+    uint64_t f_lo = a_hi * b_hi;
+
+    uint64_t s1 = c + d_lo;
+    uint64_t c1 = (s1 < c) ? 1u : 0u;
+    uint64_t s2 = s1 + e_lo;
+    uint64_t c2 = (s2 < s1) ? 1u : 0u;
+    uint64_t carry1 = c1 + c2;
+
+    uint64_t m = d_hi + e_hi;
+    uint64_t c3 = (m < d_hi) ? 1u : 0u;
+    uint64_t m2 = m + f_lo;
+    uint64_t c4 = (m2 < m) ? 1u : 0u;
+    uint64_t m3 = m2 + carry1;
+    uint64_t c5 = (m3 < m2) ? 1u : 0u;
+    uint64_t carry2 = c3 + c4 + c5;
+
+    *r_lo = m3;
+    *r_hi = f_hi + carry2;
+}
+
 /** @brief Boundary operands cross-checked against the high-word reference. */
 static void torture_scalar_mulhi_u64(void **state)
 {
     (void)state;
-    const uint64_t edge[] = {
-        0,
-        1,
-        2,
-        0xFFFFFFFFu,
-        0x100000000ull,
-        0x0000000100000001ull,
-        0x7FFFFFFFFFFFFFFFull,
-        0x8000000000000000ull,
-        0xFFFFFFFF00000000ull,
-        UINT64_MAX,
-    };
-    const uint64_t n = sizeof(edge) / sizeof(edge[0]);
-
-    for (uint64_t i = 0; i < n; i++) {
-        for (uint64_t j = 0; j < n; j++) {
-            uint64_t a = edge[i];
-            uint64_t b = edge[j];
+    for (uint64_t i = 0; i < MULHI_EDGE_COUNT; i++) {
+        for (uint64_t j = 0; j < MULHI_EDGE_COUNT; j++) {
+            uint64_t a = MULHI_EDGE[i];
+            uint64_t b = MULHI_EDGE[j];
             assert_int_equal(scalar_mulhi_u64(a, b),
                              ntt_test_ref_mulhi_u64(a, b));
         }
@@ -195,6 +233,86 @@ static void torture_scalar_mulhi_u64_random(void **state)
         uint64_t a = ntt_test_prng_next_u64(&prng_state);
         uint64_t b = ntt_test_prng_next_u64(&prng_state);
         assert_int_equal(scalar_mulhi_u64(a, b), ntt_test_ref_mulhi_u64(a, b));
+    }
+}
+
+/** @brief Boundary operands cross-checked against the reference. */
+static void torture_scalar_mulwide_u64(void **state)
+{
+    (void)state;
+    for (uint64_t i = 0; i < MULHI_EDGE_COUNT; i++) {
+        for (uint64_t j = 0; j < MULHI_EDGE_COUNT; j++) {
+            uint64_t a = MULHI_EDGE[i];
+            uint64_t b = MULHI_EDGE[j];
+            uint64_t hi, lo;
+            scalar_mulwide_u64(a, b, &hi, &lo);
+            assert_int_equal(hi, ntt_test_ref_mulhi_u64(a, b));
+            assert_int_equal(lo, a * b);
+        }
+    }
+}
+
+/** @brief Differential: random operands compared against the reference. */
+static void torture_scalar_mulwide_u64_random(void **state)
+{
+    (void)state;
+    const uint32_t iterations = test_iterations(2000);
+
+    for (uint32_t i = 0; i < iterations; i++) {
+        uint64_t a = ntt_test_prng_next_u64(&prng_state);
+        uint64_t b = ntt_test_prng_next_u64(&prng_state);
+        uint64_t hi, lo;
+        scalar_mulwide_u64(a, b, &hi, &lo);
+        assert_int_equal(hi, ntt_test_ref_mulhi_u64(a, b));
+        assert_int_equal(lo, a * b);
+    }
+}
+
+/** @brief Boundary operands cross-checked against the reference. */
+static void torture_scalar_mulhi128_u64(void **state)
+{
+    (void)state;
+    for (uint64_t i = 0; i < MULHI_EDGE_COUNT; i++) {
+        for (uint64_t j = 0; j < MULHI_EDGE_COUNT; j++) {
+            for (uint64_t k = 0; k < MULHI_EDGE_COUNT; k++) {
+                for (uint64_t l = 0; l < MULHI_EDGE_COUNT; l++) {
+                    uint64_t r_hi, r_lo, ref_hi, ref_lo;
+                    scalar_mulhi128_u64(MULHI_EDGE[i],
+                                        MULHI_EDGE[j],
+                                        MULHI_EDGE[k],
+                                        MULHI_EDGE[l],
+                                        &r_hi,
+                                        &r_lo);
+                    ref_mulhi128(MULHI_EDGE[i],
+                                 MULHI_EDGE[j],
+                                 MULHI_EDGE[k],
+                                 MULHI_EDGE[l],
+                                 &ref_hi,
+                                 &ref_lo);
+                    assert_int_equal(r_hi, ref_hi);
+                    assert_int_equal(r_lo, ref_lo);
+                }
+            }
+        }
+    }
+}
+
+/** @brief Differential: random operands compared against the reference. */
+static void torture_scalar_mulhi128_u64_random(void **state)
+{
+    (void)state;
+    const uint32_t iterations = test_iterations(2000);
+
+    for (uint32_t i = 0; i < iterations; i++) {
+        uint64_t a_hi = ntt_test_prng_next_u64(&prng_state);
+        uint64_t a_lo = ntt_test_prng_next_u64(&prng_state);
+        uint64_t b_hi = ntt_test_prng_next_u64(&prng_state);
+        uint64_t b_lo = ntt_test_prng_next_u64(&prng_state);
+        uint64_t r_hi, r_lo, ref_hi, ref_lo;
+        scalar_mulhi128_u64(a_hi, a_lo, b_hi, b_lo, &r_hi, &r_lo);
+        ref_mulhi128(a_hi, a_lo, b_hi, b_lo, &ref_hi, &ref_lo);
+        assert_int_equal(r_hi, ref_hi);
+        assert_int_equal(r_lo, ref_lo);
     }
 }
 
@@ -647,6 +765,10 @@ int main(void)
         cmocka_unit_test(torture_ntt_scalar_barrett_mu_negative),
         cmocka_unit_test(torture_scalar_mulhi_u64),
         cmocka_unit_test(torture_scalar_mulhi_u64_random),
+        cmocka_unit_test(torture_scalar_mulwide_u64),
+        cmocka_unit_test(torture_scalar_mulwide_u64_random),
+        cmocka_unit_test(torture_scalar_mulhi128_u64),
+        cmocka_unit_test(torture_scalar_mulhi128_u64_random),
         cmocka_unit_test(torture_ntt_scalar_barrett_reduce_u64),
         cmocka_unit_test(torture_ntt_scalar_barrett_reduce_u64_random),
         cmocka_unit_test(torture_ntt_scalar_barrett_reduce_u64_negative),
