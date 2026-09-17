@@ -60,11 +60,14 @@ typedef struct {
     uint64_t n_inv;        /* inverse of n mod q */
     uint64_t psi;          /* primitive 2n-th root of unity mod q */
     uint64_t psi_inv;      /* inverse primitive 2n-th root of unity mod q */
-    uint64_t *psi_pow;     /* psi_pow[i] = psi^i mod q, i = 0..n-1 */
-    uint64_t *psi_inv_pow; /* psi_inv_pow[i] = psi^-i mod q, i = 0..n-1 */
     uint32_t *bitrev;      /* bitrev[i] = bit-reversed i over log2(n) bits,
                             * precomputed once at setup so forward() or
                             * inverse() never recompute it per call. */
+    uint64_t *ta;          /* holds the twisted, pre-bit-reversed operand
+                            * copy for negacyclic_mul, then the pointwise
+                            * product. */
+    uint64_t *tb;          /* holds the twisted, pre-bit-reversed operand
+                            * copy for negacyclic_mul. */
 
     ntt_scalar_redc reduction; /* selected reduction mode */
 

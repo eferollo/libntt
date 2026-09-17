@@ -352,16 +352,13 @@ void *ntt__scalar_adapter_setup(const ntt_config *config,
     state->inv_twiddle = calloc(state->stages, sizeof(uint64_t));
 
     /*
-     * Allocate the powers of psi and psi^{-1} used by the negacyclic
-     * twisting and inverse untwisting operations.
-     *
-     * One entry is required for each polynomial coefficient:
-     *
-     *     psi_pow[i]     = psi^i
-     *     psi_inv_pow[i] = psi^{-i}.
+     * Allocate ta and tb for the negacyclic multiply: each holds a
+     * twisted, pre-bit-reversed operand copy, and ta also holds the
+     * pointwise product. They are reused for the lifetime of the context
+     * instead of being allocated on every call.
      */
-    state->psi_pow = calloc(n, sizeof(uint64_t));
-    state->psi_inv_pow = calloc(n, sizeof(uint64_t));
+    state->ta = calloc(n, sizeof(uint64_t));
+    state->tb = calloc(n, sizeof(uint64_t));
 
     /*
      * Allocate a lookup table containing the bit-reversed index of every
@@ -370,8 +367,7 @@ void *ntt__scalar_adapter_setup(const ntt_config *config,
     state->bitrev = calloc(n, sizeof(uint32_t));
 
     if (state->fwd_twiddle == NULL || state->inv_twiddle == NULL ||
-        state->psi_pow == NULL || state->psi_inv_pow == NULL ||
-        state->bitrev == NULL) {
+        state->ta == NULL || state->tb == NULL || state->bitrev == NULL) {
         NTT_LOG(NTT_LOG_ERROR, "Scalar adapter table allocation failed");
         goto cleanup;
     }
@@ -419,48 +415,6 @@ void *ntt__scalar_adapter_setup(const ntt_config *config,
         state->inv_twiddle[stage] = ntt__scalar_encode_value(iw, state);
     }
 
-    /*
-     * Initialize the zeroth powers:
-     *
-     *     psi^0    = 1
-     *     psi^{-0} = 1.
-     *
-     * These values are encoded into the selected arithmetic representation
-     * because all subsequent power generation uses the generic scalar
-     * multiplication wrapper.
-     */
-    state->psi_pow[0] = ntt__scalar_encode_value(1, state);
-    state->psi_inv_pow[0] = ntt__scalar_encode_value(1, state);
-
-    /*
-     * Encode psi and psi^{-1} into the selected internal representation.
-     *
-     * This is required before the iterative power generation below. In
-     * Montgomery mode, for example, multiplying a Montgomery-domain value
-     * by a canonical-domain value would produce an incorrectly represented
-     * result.
-     */
-    uint64_t psi_r = ntt__scalar_encode_value(state->psi, state);
-    uint64_t psi_inv_r = ntt__scalar_encode_value(state->psi_inv, state);
-
-    /*
-     * Generate all powers iteratively:
-     *
-     *     psi^i     = psi^(i-1)    * psi
-     *     psi^(-i)  = psi^(-(i-1)) * psi^(-1).
-     *
-     * This requires only one modular multiplication per table entry and
-     * avoids performing a modular exponentiation independently for every
-     * coefficient. The generic scalar multiplication wrapper automatically
-     * applies the selected Barrett or Montgomery reduction.
-     */
-    for (uint32_t i = 1; i < n; i++) {
-        state->psi_pow[i] =
-            ntt__scalar_mul(state->psi_pow[i - 1], psi_r, state);
-        state->psi_inv_pow[i] =
-            ntt__scalar_mul(state->psi_inv_pow[i - 1], psi_inv_r, state);
-    }
-
     return state;
 
 cleanup:
@@ -487,8 +441,9 @@ void ntt__scalar_adapter_teardown(void *state_ptr)
 
     SAFE_FREE(s->fwd_twiddle);
     SAFE_FREE(s->inv_twiddle);
-    SAFE_FREE(s->psi_pow);
-    SAFE_FREE(s->psi_inv_pow);
+    SAFE_FREE(s->ta);
+    SAFE_FREE(s->tb);
+    SAFE_FREE(s->bitrev);
     ZERO_STRUCTP(s);
     SAFE_FREE(s);
 }
@@ -650,6 +605,108 @@ static int scalar_inverse_internal(ntt_scalar_state *state, uint64_t *a)
 }
 
 /**
+ * @brief Executes the forward butterfly stages on a pre-permuted array.
+ *
+ * Identical to @ref scalar_forward_internal except that the leading
+ * bit-reversal permutation is omitted: the caller has already stored the
+ * input in bit-reversed order (e.g. while copying it into ta or tb),
+ * so the radix-2 Cooley-Tukey stages run directly and produce natural-order
+ * output.
+ *
+ * The negacyclic multiply uses this to avoid a dedicated permutation pass:
+ * the twist by psi^i and the bit-reversal are both applied when the operand
+ * is copied into its array, and this routine only runs the butterflies.
+ *
+ * All arithmetic runs in the selected backend representation; the caller is
+ * responsible for encoding the input before this call.
+ *
+ * @param[in] state Scalar adapter state with the precomputed stage twiddles.
+ * @param[in,out] a Array of @p state->n coefficients, bit-reversed on entry,
+ *                  natural order on exit, in the internal domain.
+ *
+ * @return NTT_OK on success.
+ * @return NTT_ERROR for invalid arguments.
+ */
+static int scalar_forward_prepermuted(ntt_scalar_state *state, uint64_t *a)
+{
+    if (state == NULL || a == NULL) {
+        NTT_LOG(NTT_LOG_ERROR, "Invalid arguments");
+        return NTT_ERROR;
+    }
+
+    for (uint32_t stage = 0, m = 2; stage < state->stages; stage++, m <<= 1) {
+        uint32_t half = m >> 1;
+        uint64_t wm = state->fwd_twiddle[stage];
+
+        for (uint32_t k = 0; k < state->n; k += m) {
+            uint64_t w = ntt__scalar_encode_value(1, state);
+
+            for (uint32_t j = 0; j < half; j++) {
+                uint64_t u = a[k + j];
+                uint64_t v = ntt__scalar_mul(a[k + j + half], w, state);
+
+                a[k + j] = ntt__scalar_add(u, v, state);
+                a[k + j + half] = ntt__scalar_sub(u, v, state);
+                w = ntt__scalar_mul(w, wm, state);
+            }
+        }
+    }
+
+    return NTT_OK;
+}
+
+/**
+ * @brief Executes the inverse butterfly stages without a trailing
+ *        permutation.
+ *
+ * Identical to @ref scalar_inverse_internal except that the trailing
+ * bit-reversal permutation is omitted and n^-1 is NOT applied. The output is
+ * therefore in bit-reversed order (value i sits at index bitrev[i]); the
+ * caller folds the un-permutation, the psi^-i untwist, the n^-1 scaling and
+ * the decode into its output pass.
+ *
+ * The negacyclic multiply uses this so the inverse butterfly stages never
+ * touch a permutation: input is natural order, output bit-reversed, and the
+ * collect step straightens everything out.
+ *
+ * @param[in] state Scalar adapter state with the precomputed stage twiddles.
+ * @param[in,out] a Array of @p state->n coefficients in the internal domain,
+ *                  natural order on entry, bit-reversed on exit.
+ *
+ * @return NTT_OK on success.
+ * @return NTT_ERROR for invalid arguments.
+ */
+static int scalar_inverse_prepermuted(ntt_scalar_state *state, uint64_t *a)
+{
+    if (state == NULL || a == NULL) {
+        NTT_LOG(NTT_LOG_ERROR, "Invalid arguments");
+        return NTT_ERROR;
+    }
+
+    for (uint32_t stage = 0, m = state->n; stage < state->stages;
+         stage++, m >>= 1) {
+        uint32_t half = m >> 1;
+        uint64_t wm = state->inv_twiddle[state->stages - 1 - stage];
+
+        for (uint32_t k = 0; k < state->n; k += m) {
+            uint64_t w = ntt__scalar_encode_value(1, state);
+
+            for (uint32_t j = 0; j < half; j++) {
+                uint64_t u = a[k + j];
+                uint64_t v = a[k + j + half];
+
+                a[k + j] = ntt__scalar_add(u, v, state);
+                a[k + j + half] =
+                    ntt__scalar_mul(ntt__scalar_sub(u, v, state), w, state);
+                w = ntt__scalar_mul(w, wm, state);
+            }
+        }
+    }
+
+    return NTT_OK;
+}
+
+/**
  * @brief Computes the public forward NTT using Cooley-Tukey DIT.
  *
  * Converts all input coefficients into the selected backend representation,
@@ -748,24 +805,24 @@ int ntt__scalar_inverse(void *state_ptr, uint64_t *a)
  * where q is the modulus and n is the transform size stored in the NTT
  * context.
  *
- * The multiplication is performed using the standard "twisting" technique to
- * convert a negacyclic convolution into a cyclic convolution:
- *   1. Multiply each coefficient by psi^i.
- *   2. Compute the Cooley-Tukey (CT) forward NTT of both operands.
+ * The multiplication avoids dedicated permutation and twist passes by folding
+ * both into the operands' arrays: the twist by psi^i and the bit-reversal are
+ * applied while copying the operands into ta/tb, and the
+ * un-permutation, psi^{-i} untwist, n^{-1} scaling and decode are combined
+ * in a single output pass. The butterfly stages themselves stay identical to
+ * @ref ntt__scalar_forward/@ref ntt__scalar_inverse and never shuffle.
+ * Concretely:
+ *   1. Copy both operands twisted by psi^i and pre-bit-reversed into ta/tb.
+ *   2. Compute the Cooley-Tukey (CT) forward NTT of both (butterflies only).
  *   3. Perform pointwise multiplication in the transform domain.
- *   4. Compute the Gentleman-Sande (GS) inverse NTT.
- *   5. Multiply each coefficient by psi^{-i} to recover the negacyclic
- *      product.
- *
- * Temporary buffers are allocated internally and freed before the function
- * returns.
+ *   4. Compute the Gentleman-Sande (GS) inverse NTT (butterflies only).
+ *   5. Un-permute, untwist, scale by n^{-1} and decode in one pass.
  *
  * @param[in] state_ptr Scalar adapter state.
  * @param[in] a  First input polynomial with @p n coefficients.
  * @param[in] b  Second input polynomial with @p n coefficients.
  * @param[out] c Output polynomial with @p n coefficients. It may alias neither
- *               input according to the adapter's current temporary-buffer
- *               strategy.
+ *               input: the multiply reuses @p state's ta/tb.
  *
  * @return NTT_OK Multiplication completed successfully.
  * @return NTT_ERROR on errors.
@@ -784,54 +841,63 @@ int ntt__scalar_negacyclic_mul(void *state_ptr,
     uint32_t n = state->n;
     int rc;
 
-    /* Twisted copies of a and b */
-    uint64_t *ta = calloc(n, sizeof(uint64_t));
-    uint64_t *tb = calloc(n, sizeof(uint64_t));
-    if (ta == NULL || tb == NULL) {
-        NTT_LOG(NTT_LOG_ERROR, "Error while allocating twisted a and b");
-        rc = NTT_ERROR;
-        goto cleanup;
-    }
+    /* Reuse state->ta/tb. */
+    uint64_t *ta = state->ta;
+    uint64_t *tb = state->tb;
+    const uint32_t *bitrev = state->bitrev;
 
-    /* Step 1: twist by psi^i */
+    uint64_t psi_e = ntt__scalar_encode_value(state->psi, state);
+    uint64_t psi_inv_e = ntt__scalar_encode_value(state->psi_inv, state);
+    uint64_t n_inv_e = ntt__scalar_encode_value(state->n_inv, state);
+
+    /*
+     * Step 1: twist by psi^i and pre-bit-reverse the operands while copying
+     * them into ta/tb. Coefficients are laid out so the butterfly stages
+     * below can run without a dedicated permutation pass. The running twiddle
+     * generates psi^i incrementally (one multiply per coefficient).
+     */
+    uint64_t tw = ntt__scalar_encode_value(1, state);
     for (uint32_t i = 0; i < n; i++) {
-        ta[i] = ntt__scalar_mul(ntt__scalar_encode_value(a[i], state),
-                                state->psi_pow[i],
-                                state);
-        tb[i] = ntt__scalar_mul(ntt__scalar_encode_value(b[i], state),
-                                state->psi_pow[i],
-                                state);
+        ta[bitrev[i]] =
+            ntt__scalar_mul(ntt__scalar_encode_value(a[i], state), tw, state);
+        tb[bitrev[i]] =
+            ntt__scalar_mul(ntt__scalar_encode_value(b[i], state), tw, state);
+        tw = ntt__scalar_mul(tw, psi_e, state);
     }
 
-    /* Step 2: forward NTT (cyclic) on each */
-    rc = scalar_forward_internal(state, ta);
+    /* Step 2: forward NTT (butterflies only, input already bit-reversed). */
+    rc = scalar_forward_prepermuted(state, ta);
     if (rc != NTT_OK) {
-        goto cleanup;
+        return rc;
     }
-    rc = scalar_forward_internal(state, tb);
+    rc = scalar_forward_prepermuted(state, tb);
     if (rc != NTT_OK) {
-        goto cleanup;
+        return rc;
     }
 
-    /* Step 3: pointwise multiply, reuse ta as the output buffer */
+    /* Step 3: pointwise multiply in the frequency domain, reuse ta. */
     for (uint32_t i = 0; i < n; i++) {
         ta[i] = ntt__scalar_mul(ta[i], tb[i], state);
     }
 
-    /* Step 4: inverse NTT */
-    rc = scalar_inverse_internal(state, ta);
+    /* Step 4: inverse NTT (butterflies only, output arrives bit-reversed). */
+    rc = scalar_inverse_prepermuted(state, ta);
     if (rc != NTT_OK) {
-        goto cleanup;
+        return rc;
     }
 
-    /* Step 5: untwist by psi^{-i} to undo step 1 */
+    /*
+     * Step 5: un-permute, untwist by psi^-i, scale by n^-1 and decode in a
+     * single output pass. The running factor starts at n^-1 and advances by
+     * psi^-1, so it yields n^-1 * psi^-i for each coefficient in one
+     * multiply.
+     */
+    uint64_t untw = n_inv_e;
     for (uint32_t i = 0; i < n; i++) {
-        uint64_t x = ntt__scalar_mul(ta[i], state->psi_inv_pow[i], state);
+        uint64_t x = ntt__scalar_mul(ta[bitrev[i]], untw, state);
         c[i] = ntt__scalar_decode_value(x, state);
+        untw = ntt__scalar_mul(untw, psi_inv_e, state);
     }
 
-cleanup:
-    SAFE_FREE(ta);
-    SAFE_FREE(tb);
-    return rc;
+    return NTT_OK;
 }
