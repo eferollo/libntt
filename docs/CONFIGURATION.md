@@ -27,8 +27,7 @@ Test-only variables (not part of the public API):
 
 | Variable | Meaning |
 |---|---|
-| `NTT_BARRETT_STRESS` | When set, the Barrett unit test reseeds its PRNG from OpenSSL and scales the differential-iteration count. |
-| `NTT_MONTGOMERY_STRESS` | Same, for the Montgomery unit test. |
+| `NTT_STRESS` | When set, the Barrett and Montgomery unit tests reseed their PRNG from OpenSSL and scale the differential-iteration count. |
 
 ## Configuration file
 

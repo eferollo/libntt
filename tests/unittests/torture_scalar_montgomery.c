@@ -12,13 +12,6 @@
 /** @brief Deterministic PRNG state (shared splitmix64 in test_common.h). */
 static uint64_t prng_state = UINT64_C(0x9E3779B97F4A7C15);
 
-/** @brief Returns true when the stress mode environment variable is set. */
-static bool stress_mode_enabled(void)
-{
-    const char *stress = getenv("NTT_MONTGOMERY_STRESS");
-    return stress != NULL && stress[0] != '\0';
-}
-
 /** @brief Scales @p base by the stress factor when stress mode is active. */
 static uint32_t test_iterations(uint32_t base)
 {

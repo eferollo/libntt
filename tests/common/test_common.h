@@ -23,6 +23,7 @@
 #include "ntt/ntt_log.h"
 
 #include <stdarg.h>
+#include <stdbool.h>
 #include <stddef.h>
 #include <setjmp.h>
 #include <stdint.h>
@@ -59,6 +60,13 @@ static inline void ntt_test_set_log_level(void)
             ntt_log_set_level(NTT_LOG_DEBUG);
         }
     }
+}
+
+/** @brief Returns true when the stress mode environment variable is set. */
+static inline bool stress_mode_enabled(void)
+{
+    const char *stress = getenv("NTT_STRESS");
+    return stress != NULL && stress[0] != '\0';
 }
 
 /*
